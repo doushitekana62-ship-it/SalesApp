@@ -27,7 +27,7 @@ function doPost(e) {
     const action = String(payload.action || "");
     let data;
     if (action === "login") data = login_(payload);
-    else if (action === "me") data = { user: requireSession_(payload.sessionToken) };
+    else if (action === "me") data = requireSession_(payload.sessionToken);
     else if (action === "logout") data = logout_(payload);
     else if (action === "dashboard") data = dashboard_(payload);
     else throw new Error("Aksi tidak dikenal.");
