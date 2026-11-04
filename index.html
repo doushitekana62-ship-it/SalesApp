@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <title>SalesApp | Inquiry Control</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="shell">
+    <section id="loginView" class="login-wrap">
+      <div class="brand"><span class="brand-mark">S</span><div><strong>SalesApp</strong><small>Inquiry Control Dashboard</small></div></div>
+      <form id="loginForm" class="panel login-panel">
+        <p class="eyebrow">SECURE ACCESS</p>
+        <h1>Masuk ke dashboard</h1>
+        <p class="muted">Gunakan USER_ID atau email dan password yang dibuat oleh Owner.</p>
+        <label for="identity">USER_ID / Email</label>
+        <input id="identity" name="identity" autocomplete="username" required>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <button class="primary" type="submit">Masuk</button>
+        <p id="loginMessage" class="message" role="status"></p>
+      </form>
+      <p class="footnote">Akun dibuat dan diaktifkan secara manual oleh Owner. Tidak tersedia pendaftaran mandiri.</p>
+    </section>
+
+    <section id="appView" hidden>
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark">S</span><div><strong>SalesApp</strong><small>Inquiry Control Dashboard</small></div></div>
+        <div class="user-area"><div><strong id="userName">—</strong><small id="userRole">—</small></div><button id="logoutBtn" class="secondary">Keluar</button></div>
+      </header>
+      <div class="page-heading"><div><p class="eyebrow">OVERVIEW</p><h1>Inquiry monitoring</h1><p class="muted" id="scopeText">Ringkasan data inquiry lintas divisi.</p></div><button id="refreshBtn" class="secondary">Muat ulang</button></div>
+      <div id="notice" class="notice" role="status">Menghubungkan ke server…</div>
+      <section class="kpi-grid">
+        <article class="kpi"><span>Total inquiry</span><strong id="totalInquiry">—</strong><small>Record dengan nomor inquiry</small></article>
+        <article class="kpi"><span>Quotation released</span><strong id="quotationReleased">—</strong><small>Nomor penawaran terisi</small></article>
+        <article class="kpi"><span>Get order</span><strong id="getOrder">—</strong><small>Status project GET ORDER</small></article>
+        <article class="kpi"><span>Lost</span><strong id="lost">—</strong><small>Status project LOST</small></article>
+      </section>
+      <section class="panel data-panel">
+        <div class="panel-heading"><div><p class="eyebrow">DATA REGISTER</p><h2>Inquiry terbaru</h2></div><input id="searchInput" class="search" placeholder="Cari inquiry, customer, project…" aria-label="Cari inquiry"></div>
+        <div class="table-wrap"><table><thead><tr><th>Inquiry No.</th><th>Customer</th><th>Project</th><th>Equipment</th><th>Planner</th><th>Sales PIC</th><th>Quotation</th><th>Project status</th></tr></thead><tbody id="inquiryRows"><tr><td colspan="8" class="empty">Data belum dimuat.</td></tr></tbody></table></div>
+        <p class="muted small">Tampilan awal bersifat monitoring. Pengeditan data belum diaktifkan sampai matriks hak akses dan kolom update tiap divisi tervalidasi.</p>
+      </section>
+    </section>
+  </main>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
