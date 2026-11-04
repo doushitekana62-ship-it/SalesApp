@@ -5,6 +5,8 @@
   const $ = (id) => document.getElementById(id);
   let sessionToken = sessionStorage.getItem("salesapp_session") || "";
   let records = [];
+  let dashboardSummary = null;
+  let guestMode = false;
 
   async function api(action, payload = {}) {
     if (!API || API.includes("YOUR-WORKER-NAME")) throw new Error("API belum dikonfigurasi. Isi API_BASE_URL di frontend/config.js setelah Worker dideploy.");
@@ -35,10 +37,16 @@
     return records.filter(r => String(r.projectStatus || "").trim().toUpperCase() === status).length;
   }
   function render() {
-    $("totalInquiry").textContent = records.length.toLocaleString("id-ID");
-    $("quotationReleased").textContent = records.filter(r => String(r.quotationNo || "").trim()).length.toLocaleString("id-ID");
-    $("getOrder").textContent = countStatus("GET ORDER").toLocaleString("id-ID");
-    $("lost").textContent = countStatus("LOST").toLocaleString("id-ID");
+    const summary = dashboardSummary || {
+      total: records.length,
+      quotationReleased: records.filter(r => String(r.quotationNo || "").trim()).length,
+      getOrder: countStatus("GET ORDER"),
+      lost: countStatus("LOST")
+    };
+    $("totalInquiry").textContent = Number(summary.total || 0).toLocaleString("id-ID");
+    $("quotationReleased").textContent = Number(summary.quotationReleased || 0).toLocaleString("id-ID");
+    $("getOrder").textContent = Number(summary.getOrder || 0).toLocaleString("id-ID");
+    $("lost").textContent = Number(summary.lost || 0).toLocaleString("id-ID");
     const term = $("searchInput").value.trim().toLowerCase();
     const filtered = records.filter(r => [r.inquiryNo,r.customer,r.project,r.equipment,r.planner,r.salesPic,r.quotationNo,r.projectStatus].join(" ").toLowerCase().includes(term)).slice(0,100);
     $("inquiryRows").innerHTML = "";
@@ -59,8 +67,12 @@
     try {
       const data = await api("dashboard");
       records = Array.isArray(data.records) ? data.records : [];
+      dashboardSummary = data.summary || null;
+      guestMode = Boolean(data.guest);
       render();
-      $("notice").textContent = "Terhubung. " + records.length + " inquiry berhasil dimuat.";
+      $("notice").textContent = guestMode
+        ? "Mode tamu aktif. Hanya KPI agregat yang ditampilkan; detail inquiry dibatasi."
+        : "Terhubung. " + records.length + " inquiry berhasil dimuat.";
     } catch (err) {
       $("notice").className = "notice error"; $("notice").textContent = err.message;
     }
