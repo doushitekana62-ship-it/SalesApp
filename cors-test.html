@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SalesApp API CORS Test</title>
+<style>body{font:14px system-ui;background:#f3f5f8;color:#172033;max-width:760px;margin:40px auto;padding:0 18px}main{background:white;border:1px solid #e1e6ee;border-radius:12px;padding:24px}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #ccd4df;border-radius:7px;margin:8px 0 16px}button{padding:11px 18px;background:#1c355b;color:white;border:0;border-radius:7px;cursor:pointer}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f7f9;padding:14px;border-radius:8px;min-height:70px}.hint{color:#657287;line-height:1.5}</style></head>
+<body><main><h1>SalesApp — Direct API CORS Test</h1>
+<p class="hint">Halaman ini menguji koneksi browser GitHub Pages langsung ke Google Apps Script. Gunakan URL Web App berakhiran <code>/exec</code>. Jangan masukkan password atau token.</p>
+<label for="url">Apps Script Web App URL</label><input id="url" placeholder="https://script.google.com/macros/s/.../exec">
+<button id="test">Uji koneksi</button><h3>Hasil</h3><pre id="result">Belum diuji.</pre></main>
+<script>
+document.getElementById("test").addEventListener("click", async () => {
+ const url=document.getElementById("url").value.trim();
+ const out=document.getElementById("result");
+ if(!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(url)){out.textContent="URL tidak valid. Pastikan URL resmi Apps Script berakhiran /exec.";return;}
+ out.textContent="Mengirim POST text/plain dan menunggu respons Apps Script…";
+ try{
+  const res=await fetch(url,{method:"POST",mode:"cors",redirect:"follow",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"ping"})});
+  const body=await res.text();
+  let parsed;try{parsed=JSON.parse(body)}catch(_){throw new Error("HTTP "+res.status+" tetapi respons bukan JSON. Awal respons: "+body.slice(0,240))}
+  if(!res.ok||!parsed.ok)throw new Error("HTTP "+res.status+" — "+(parsed.error||body));
+  out.textContent="BERHASIL\nHTTP: "+res.status+"\nFinal URL: "+res.url+"\nRespons: "+JSON.stringify(parsed,null,2)+"\n\nBrowser dapat membaca respons Apps Script dari origin GitHub Pages.";
+ }catch(err){
+  out.textContent="GAGAL\n"+err.name+": "+err.message+"\n\nBuka Developer Tools → Console/Network untuk detail. Jika muncul CORS policy, komunikasi langsung belum lolos pengujian pada deployment ini. Jangan aktifkan fitur produksi dahulu.";
+ }
+});
+</script></body></html>
