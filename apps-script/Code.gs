@@ -7,6 +7,7 @@ const SA = Object.freeze({
   INQUIRY_SHEET: "Inquiry sheet",
   USERS_SHEET: "USERS",
   LOG_SHEET: "ACTIVITY_LOG",
+  USERS_HEADER_SCAN_ROWS: 20,
   INQUIRY_HEADER_ROW: 6,
   INQUIRY_FIRST_ROW: 7,
   SESSION_TTL_SECONDS: 21600
@@ -62,7 +63,7 @@ function ownerSetUserPassword() {
   if (password.length < 12) throw new Error("Password minimal 12 karakter.");
 
   const sheet = getSheet_(SA.USERS_SHEET);
-  const table = readTable_(sheet, 1);
+  const table = readUsersTable_(sheet);
   const idCol = table.map.USER_ID;
   const saltCol = table.map.PASSWORD_SALT;
   const hashCol = table.map.PASSWORD_HASH;
@@ -84,7 +85,7 @@ function login_(payload) {
   const password = String(payload.password || "");
   if (!identity || !password) throw new Error("USER_ID/email dan password wajib diisi.");
 
-  const table = readTable_(getSheet_(SA.USERS_SHEET), 1);
+  const table = readUsersTable_(getSheet_(SA.USERS_SHEET));
   const required = ["USER_ID", "EMAIL", "FULL_NAME", "ROLE", "DIVISION", "ACTIVE", "PASSWORD_SALT", "PASSWORD_HASH"];
   required.forEach(k => { if (table.map[k] === undefined) throw new Error("Kolom USERS tidak ditemukan: " + k); });
 
@@ -123,7 +124,7 @@ function requireSession_(token) {
   if (!raw) throw new Error("Sesi berakhir. Silakan login kembali.");
   const session = JSON.parse(raw);
   // Recheck account status and role from USERS on every protected request.
-  const table = readTable_(getSheet_(SA.USERS_SHEET), 1);
+  const table = readUsersTable_(getSheet_(SA.USERS_SHEET));
   const row = table.rows.find(r => String(r[table.map.USER_ID]) === String(session.userId));
   if (!row || !isActive_(row[table.map.ACTIVE])) {
     CacheService.getScriptCache().remove("SA_SESSION_" + token);
@@ -183,6 +184,20 @@ function audit_(action, user, field, recordKey, oldValue, newValue) {
   ]);
 }
 
+/**
+ * Constant-time string comparison for password hashes.
+ */
+function safeEqual_(a, b) {
+  a = String(a || "");
+  b = String(b || "");
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 function publicUser_(row, map) {
   return {
     userId: String(row[map.USER_ID] || ""),
@@ -203,6 +218,26 @@ function cell_(row, map, key) {
   if (value instanceof Date) return Utilities.formatDate(value, Session.getScriptTimeZone(), "yyyy-MM-dd");
   return value === null || value === undefined ? "" : String(value).trim();
 }
+/**
+ * Locate the USERS header row instead of assuming it is row 1.
+ * The sheet contains a title and explanatory note above the actual table.
+ */
+function readUsersTable_(sheet) {
+  const scanRows = Math.min(SA.USERS_HEADER_SCAN_ROWS, sheet.getLastRow());
+  const lastCol = sheet.getLastColumn();
+  if (!scanRows || !lastCol) throw new Error("Sheet USERS kosong.");
+
+  const candidates = sheet.getRange(1, 1, scanRows, lastCol).getDisplayValues();
+  for (let i = 0; i < candidates.length; i++) {
+    const normalized = candidates[i].map(h => String(h).trim().toUpperCase());
+    if (normalized.includes("USER_ID") && normalized.includes("EMAIL")) {
+      return readTable_(sheet, i + 1);
+    }
+  }
+  throw new Error("Header USERS tidak ditemukan dalam " + scanRows +
+    " baris pertama. Pastikan terdapat kolom USER_ID dan EMAIL.");
+}
+
 function readTable_(sheet, headerRow) {
   const lastRow = sheet.getLastRow();
   const lastCol = sheet.getLastColumn();
