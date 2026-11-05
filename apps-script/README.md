@@ -7,8 +7,7 @@ These files belong in the Apps Script project opened from the Google Sheet itsel
 - `Auth.gs`: PBKDF2-HMAC-SHA256 password hashing.
 
 ## Script Properties
-Set these under **Project Settings → Script Properties**:
-- `WORKER_SHARED_SECRET`: a long random secret shared only with the Cloudflare Worker.
+Set this under **Project Settings → Script Properties**:
 - `OWNER_EMAIL`: the exact Google account email of the spreadsheet Owner, used to restrict the password-reset menu.
 
 Do not put these values into GitHub or frontend code.
