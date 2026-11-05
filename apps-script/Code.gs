@@ -73,7 +73,7 @@ function ownerSetUserPassword() {
   if (idx < 0) throw new Error("USER_ID tidak ditemukan di USERS.");
   const salt = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");
   const hash = pbkdf2Hex_(password, salt, 120000);
-  const rowNumber = idx + 2;
+  const rowNumber = table.headerRow + idx + 1;
   sheet.getRange(rowNumber, saltCol + 1).setValue(salt);
   sheet.getRange(rowNumber, hashCol + 1).setValue(hash);
   SpreadsheetApp.flush();
@@ -231,7 +231,9 @@ function readUsersTable_(sheet) {
   for (let i = 0; i < candidates.length; i++) {
     const normalized = candidates[i].map(h => String(h).trim().toUpperCase());
     if (normalized.includes("USER_ID") && normalized.includes("EMAIL")) {
-      return readTable_(sheet, i + 1);
+      const table = readTable_(sheet, i + 1);
+      table.headerRow = i + 1;
+      return table;
     }
   }
   throw new Error("Header USERS tidak ditemukan dalam " + scanRows +
