@@ -12,21 +12,18 @@ const SA = Object.freeze({
   SESSION_TTL_SECONDS: 21600
 });
 
-function doGet() {
-  return json_({ ok: true, data: { service: "SalesApp API", status: "online" } });
+function doGet(e) {
+  // Public health check only; never return business data from GET/JSONP.
+  return json_({ ok: true, data: { service: "SalesApp API", status: "online", corsTest: true } });
 }
 
 function doPost(e) {
   try {
     const payload = JSON.parse(e && e.postData && e.postData.contents || "{}");
-    const expectedSecret = PropertiesService.getScriptProperties().getProperty("WORKER_SHARED_SECRET");
-    if (!expectedSecret || !safeEqual_(String(payload.bridgeSecret || ""), expectedSecret)) {
-      return json_({ ok: false, error: "Unauthorized bridge." });
-    }
-
     const action = String(payload.action || "");
     let data;
-    if (action === "login") data = login_(payload);
+    if (action === "ping") data = { service: "SalesApp API", status: "online", timestamp: new Date().toISOString() };
+    else if (action === "login") data = login_(payload);
     else if (action === "me") data = requireSession_(payload.sessionToken);
     else if (action === "logout") data = logout_(payload);
     else if (action === "dashboard") data = dashboard_(payload);
@@ -223,11 +220,4 @@ function getSheet_(name) {
 }
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
-}
-function safeEqual_(a, b) {
-  a = String(a); b = String(b);
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
 }
