@@ -72,9 +72,17 @@
       dashboardSummary = data.summary || null;
       guestMode = Boolean(data.guest);
       render();
+      const d = data.diagnostics || {};
+      const diagnosticText = records.length === 0 && !guestMode
+        ? " Diagnostik: sheet=" + (d.sheetName || "?") +
+          ", header=row " + (d.headerRow || "?") +
+          ", baris terakhir=" + (d.lastRow || "?") +
+          ", kolom nomor inquiry=" + (d.inquiryKeyColumn || "?") +
+          ", nomor inquiry terisi=" + (d.nonEmptyInquiryKeys ?? "?") + "."
+        : "";
       $("notice").textContent = guestMode
         ? "Mode tamu aktif. Hanya KPI agregat yang ditampilkan; detail inquiry dibatasi."
-        : "Terhubung. " + records.length + " inquiry berhasil dimuat.";
+        : "Terhubung. " + records.length + " inquiry berhasil dimuat." + diagnosticText;
     } catch (err) {
       $("notice").className = "notice error"; $("notice").textContent = err.message;
     }
