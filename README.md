@@ -43,6 +43,8 @@ The backend expects these sheet names and header rows:
 
 The backend uses `INQUIRY PROJECT NO` as the record key. It does not use the inconsistent sequence number in column A.
 
+For direct communication testing, publish the site and open `https://<your-github-pages-domain>/cors-test.html`. Enter the Apps Script Web App `/exec` URL and run the test. This must pass before real users are invited.
+
 ## Known limitation in this initial scaffold
 
 The dashboard currently provides a working interface shell and API connection diagnostics. It does not yet enable business-data edits. Division-specific field ownership, the final status vocabulary, and the maintenance/workshop/project update schema must be confirmed before write endpoints are enabled. This is deliberate: allowing writes against an unvalidated mapping could corrupt the existing workbook.
