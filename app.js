@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const cfg = window.SALESAPP_CONFIG || {};
-  const API = String(cfg.API_BASE_URL || "").replace(/\/$/, "");
+  const API = String(cfg.APPS_SCRIPT_URL || "").replace(/\/$/, "");
   const $ = (id) => document.getElementById(id);
   let sessionToken = sessionStorage.getItem("salesapp_session") || "";
   let records = [];
@@ -9,10 +9,12 @@
   let guestMode = false;
 
   async function api(action, payload = {}) {
-    if (!API || API.includes("YOUR-WORKER-NAME")) throw new Error("API belum dikonfigurasi. Isi API_BASE_URL di frontend/config.js setelah Worker dideploy.");
+    if (!API || API.includes("PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL")) throw new Error("API belum dikonfigurasi. Isi APPS_SCRIPT_URL di frontend/config.js setelah Apps Script dideploy.");
     const response = await fetch(API, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      mode: "cors",
+      redirect: "follow",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({ action, sessionToken, ...payload })
     });
     if (!response.ok) throw new Error("Server merespons HTTP " + response.status);
