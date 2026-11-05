@@ -135,9 +135,24 @@ function requireSession_(token) {
 
 function dashboard_(payload) {
   const user = requireSession_(payload.sessionToken);
-  const table = readTable_(getSheet_(SA.INQUIRY_SHEET), SA.INQUIRY_HEADER_ROW);
-  const records = table.rows
-    .filter(row => String(row[table.map["INQUIRY PROJECT NO"]] || "").trim())
+  const sheet = getSheet_(SA.INQUIRY_SHEET);
+  const table = readTable_(sheet, SA.INQUIRY_HEADER_ROW);
+  const keyIndex = table.map[normalizeHeader_("INQUIRY PROJECT NO")];
+  if (keyIndex === undefined) {
+    throw new Error("Header INQUIRY PROJECT NO tidak ditemukan pada baris " +
+      SA.INQUIRY_HEADER_ROW + " di sheet '" + SA.INQUIRY_SHEET +
+      "'. Header terbaca: " + Object.keys(table.map).join(" | "));
+  }
+  const validRows = table.rows.filter(row => String(row[keyIndex] || "").trim());
+  const diagnostics = {
+    sheetName: sheet.getName(),
+    headerRow: SA.INQUIRY_HEADER_ROW,
+    lastRow: sheet.getLastRow(),
+    lastColumn: sheet.getLastColumn(),
+    inquiryKeyColumn: keyIndex + 1,
+    nonEmptyInquiryKeys: validRows.length
+  };
+  const records = validRows
     .map(row => ({
       inquiryNo: cell_(row, table.map, "INQUIRY PROJECT NO"),
       customer: cell_(row, table.map, "CUSTOMER"),
@@ -160,10 +175,11 @@ function dashboard_(payload) {
         getOrder: records.filter(r => String(r.projectStatus).toUpperCase() === "GET ORDER").length,
         lost: records.filter(r => String(r.projectStatus).toUpperCase() === "LOST").length
       },
-      records: []
+      records: [],
+      diagnostics: diagnostics
     };
   }
-  return { guest: false, summary: null, records: records };
+  return { guest: false, summary: null, records: records, diagnostics: diagnostics };
 }
 
 function audit_(action, user, field, recordKey, oldValue, newValue) {
@@ -240,13 +256,20 @@ function readUsersTable_(sheet) {
     " baris pertama. Pastikan terdapat kolom USER_ID dan EMAIL.");
 }
 
+function normalizeHeader_(value) {
+  return String(value || "").replace(/\\s+/g, " ").trim().toUpperCase();
+}
+
 function readTable_(sheet, headerRow) {
   const lastRow = sheet.getLastRow();
   const lastCol = sheet.getLastColumn();
   if (!lastCol || lastRow < headerRow) throw new Error("Sheet " + sheet.getName() + " belum memiliki header.");
-  const headers = sheet.getRange(headerRow, 1, 1, lastCol).getDisplayValues()[0].map(h => String(h).trim());
+  const headers = sheet.getRange(headerRow, 1, 1, lastCol).getDisplayValues()[0];
   const map = {};
-  headers.forEach((h, i) => { if (h) map[h] = i; });
+  headers.forEach((h, i) => {
+    const key = normalizeHeader_(h);
+    if (key) map[key] = i;
+  });
   const rows = lastRow > headerRow ? sheet.getRange(headerRow + 1, 1, lastRow - headerRow, lastCol).getValues() : [];
   return { map: map, rows: rows };
 }
