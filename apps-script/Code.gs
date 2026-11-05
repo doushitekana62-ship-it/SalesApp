@@ -1,7 +1,7 @@
 /**
  * SalesApp backend — bound to the Google Spreadsheet.
  * Deploy as Web App: Execute as spreadsheet owner.
- * All browser requests must arrive through the Cloudflare Worker bridge.
+ * Browser requests connect directly to this Web App using a simple text/plain POST.
  */
 const SA = Object.freeze({
   INQUIRY_SHEET: "Inquiry sheet",
