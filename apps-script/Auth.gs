@@ -14,3 +14,24 @@ function pbkdf2Hex_(password, salt, iterations) {
   }
   return result.map(b => ("0" + ((b + 256) % 256).toString(16)).slice(-2)).join("");
 }
+
+
+/**
+ * Diagnostic only: measures PBKDF2 cost without touching any user account.
+ * Run manually from the Apps Script editor and inspect Execution log.
+ */
+function diagnosePasswordHashPerformance() {
+  const testPassword = "SalesApp-Diagnostic-Only";
+  const testSalt = "diagnostic-salt-not-a-real-user";
+  const rounds = [1000, 5000, 10000, 20000];
+  const results = [];
+  rounds.forEach(iterations => {
+    const start = Date.now();
+    pbkdf2Hex_(testPassword, testSalt, iterations);
+    const elapsed = Date.now() - start;
+    results.push({ iterations: iterations, milliseconds: elapsed });
+    Logger.log("PBKDF2 " + iterations + " iterations: " + elapsed + " ms");
+  });
+  Logger.log("Diagnostic complete. No USERS rows or password hashes were changed.");
+  return results;
+}
