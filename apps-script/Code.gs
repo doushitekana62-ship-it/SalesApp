@@ -327,7 +327,7 @@ function audit_(action, user, field, recordKey, oldValue, newValue, details) {
         ? "Authentication" : ""
     )),
     ROW_NUMBER: extra.rowNumber === undefined || extra.rowNumber === null ? "" : extra.rowNumber,
-    FIELD_KEY: String(extra.fieldKey || field || ""),
+    FIELD_KEY: String(extra.fieldKey || ((String(action).toUpperCase() === "LOGIN" || String(action).toUpperCase() === "LOGOUT") ? "" : (field || ""))),
     OLD_VALUE: oldValue === undefined || oldValue === null ? "" : String(oldValue),
     NEW_VALUE: newValue === undefined || newValue === null ? "" : String(newValue),
     REQUEST_ID: requestId,
