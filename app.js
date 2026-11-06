@@ -16,6 +16,7 @@
   let currentUser = null;
   let activeInquiryNo = "";
   let activeEditableFields = [];
+  let editorMode = "edit";
 
   async function api(action, payload = {}) {
     if (!API || API.includes("PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL")) {
