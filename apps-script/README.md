@@ -2,6 +2,20 @@
 
 These files belong in the Apps Script project opened from the Google Sheet itself (**Extensions → Apps Script**).
 
+## Dashboard analytics (Stage 6)
+
+The dashboard now renders eight Excel-inspired visualizations from live inquiry records:
+1. Kind of Works — `JENIS EQUIPMENT` (column D).
+2. Inquiry Rank — `INQUIRY RANK` (column J).
+3. Project Rank — 100% stacked distribution of inquiry rank by equipment.
+4. Requester — `DEPARTMENT` (column G).
+5. Planning Status — `PLANING JOB` (column V; values such as FINISHED / NOT STARTED).
+6. Project Status — `STATUS PROJECT` (column AB). This is intentionally labeled Project Status because the source Excel chart title "Quotation Status" actually plots project-status categories.
+7. Finished Planning vs Quotation Released — compares FINISHED in column V with RELEASED in column Y.
+8. Customer Specification Document — `TECHNICAL SPEC. DARI CUSTOMER` (column H).
+
+Planner and Sales PIC performance charts remain available. Selecting a category in supported charts filters the inquiry register; use "Hapus filter grafik" to clear the chart filter. All counts are recalculated from records returned by Apps Script, not copied from the workbook's legacy chart formulas.
+
 ## Files
 - `Code.gs`: API routing, challenge-response login, session validation, dashboard/detail reads, division-based create/edit writes, audit log, and Owner password menu.
 - `Auth.gs`: PBKDF2-HMAC-SHA256 used when the Owner creates or resets a password.
