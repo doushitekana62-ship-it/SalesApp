@@ -30,8 +30,8 @@ The application is not production-ready until Apps Script is deployed and direct
 4. Deploy Apps Script as a Web App. Execute as the spreadsheet owner. The Web App must accept requests from anyone so the custom login can be used; spreadsheet users must not be granted direct spreadsheet access. All data actions must validate the app session and role.
 5. Paste the deployed `/exec` URL into `frontend/config.js` as `APPS_SCRIPT_URL`.
 6. Open `cors-test.html` from the published site and run the connectivity test. Do not proceed to production until the test passes in the browser console.
-8. Enable GitHub Pages for the repository using the `/frontend` folder if the repository settings support it, or publish the frontend folder through the configured Pages source.
-9. Test with a non-production test account before creating real users.
+7. Enable GitHub Pages using the repository root (`/`) because the published `index.html`, `app.js`, `style.css`, and `config.js` are in the root.
+8. Test with a non-production test account before creating real users.
 
 ## Workbook requirements
 
@@ -45,6 +45,25 @@ The backend uses `INQUIRY PROJECT NO` as the record key. It does not use the inc
 
 For direct communication testing, publish the site and open `https://<your-github-pages-domain>/cors-test.html`. Enter the Apps Script Web App `/exec` URL and run the test. This must pass before real users are invited.
 
-## Known limitation in this initial scaffold
+## Live input and editing
 
-The dashboard currently provides a working interface shell and API connection diagnostics. It does not yet enable business-data edits. Division-specific field ownership, the final status vocabulary, and the maintenance/workshop/project update schema must be confirmed before write endpoints are enabled. This is deliberate: allowing writes against an unvalidated mapping could corrupt the existing workbook.
+Google Sheets is the active database, not an export-only source. The website now includes:
+- Add inquiry for ADMIN and SALES.
+- Edit form in the inquiry detail view.
+- ADMIN access to all business fields (the inquiry number is immutable after creation because it is the record key).
+- Division-based field permissions enforced by Apps Script on every write.
+- Maintenance update stored in column AD as MAINTENANCE UPDATE; Apps Script adds this header at row 6 only if column AD is available.
+- Writes to the same Inquiry sheet, cache invalidation, and per-field audit records in ACTIVITY_LOG.
+- Column U progress-bar formula protection when creating a new inquiry.
+
+## Deployment after a code update
+
+GitHub Pages updates the frontend automatically after commits. Apps Script is separate and must be updated manually:
+1. Open the spreadsheet → Extensions → Apps Script.
+2. Replace the complete contents of Apps Script Code.gs with the repository's latest apps-script/Code.gs.
+3. Keep the existing Auth.gs code (or replace it with the repository's matching apps-script/Auth.gs).
+4. Save, then Deploy → Manage deployments → Edit → New version → Deploy.
+5. Keep the same Web App /exec URL in the root config.js.
+6. Test first with a test inquiry and verify the changed cells and audit entries before allowing all users to use the editor.
+
+Do not copy the frontend files into Apps Script. Do not change the spreadsheet ID or the existing /exec URL during this update.
