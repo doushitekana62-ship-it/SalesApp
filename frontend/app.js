@@ -161,7 +161,40 @@
     document.querySelectorAll("[data-kpi]").forEach(card=>{const selected=card.dataset.kpi===activeKpiFilter||(card.dataset.kpi==="total"&&activeKpiFilter==="all");card.setAttribute("aria-pressed",selected?"true":"false");});
     $("inquiryRows").innerHTML="";
     if(!filtered.length){const tr=document.createElement("tr");const td=document.createElement("td");td.colSpan=8;td.className="empty";td.textContent="Tidak ada data yang cocok.";tr.appendChild(td);$("inquiryRows").appendChild(tr);return;}
-    filtered.forEach(r=>{const tr=document.createElement("tr");[r.inquiryNo,r.customer,r.project,r.equipment,r.planner,r.salesPic,r.quotationNo,r.projectStatus].forEach(value=>{const td=document.createElement("td");td.textContent=value||"—";tr.appendChild(td);});$("inquiryRows").appendChild(tr);});
+    filtered.forEach(r=>{const tr=document.createElement("tr");tr.className="clickable-row";tr.tabIndex=0;tr.title="Klik untuk melihat detail inquiry";[r.inquiryNo,r.customer,r.project,r.equipment,r.planner,r.salesPic,r.quotationNo,r.projectStatus].forEach(value=>{const td=document.createElement("td");td.textContent=value||"—";tr.appendChild(td);});tr.addEventListener("click",()=>openInquiryDetail(r.inquiryNo));tr.addEventListener("keydown",event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();openInquiryDetail(r.inquiryNo);}});$("inquiryRows").appendChild(tr);});
+  }
+
+
+  function addDetailField(containerId,label,value){
+    const container=$(containerId),item=document.createElement("div");item.className="detail-field";
+    const term=document.createElement("span");term.textContent=label;
+    const description=document.createElement("strong");description.textContent=(value===null||value===undefined||String(value).trim()==="")?"—":String(value);
+    item.append(term,description);container.appendChild(item);
+  }
+  function renderDetail(record,history){
+    $("detailTitle").textContent=record.inquiryNo||"Detail inquiry";
+    $("detailSubtitle").textContent=(record.customer||"Customer belum diisi")+" · Baris spreadsheet "+record.rowNumber;
+    const groups={
+      detailIdentity:[["Nomor inquiry",record.inquiryNo],["Customer",record.customer],["Nama project",record.project]],
+      detailEquipment:[["Jenis equipment",record.equipment],["Technical spec. dari customer",record.customerTechnicalSpec],["MOM / spesifikasi dari Sales",record.salesMomSpec],["Technical spec",record.technicalSpec]],
+      detailRequester:[["Nama requester",record.requester],["Department",record.department],["Inquiry rank",record.inquiryRank]],
+      detailPeople:[["Planner PIC",record.planner],["Tanggal inquiry masuk ke Planner",record.plannerInquiryDate],["Sales PIC",record.salesPic]],
+      detailDocuments:[["Technical spec",record.technicalSpec],["Drawing",record.drawing],["Cost table",record.costTable],["Lain-lain",record.otherDocuments]],
+      detailProgress:[["Due date data masuk ke Sales",record.dueDate],["Estimasi delivery time",record.estimatedDeliveryTime],["Actual data delivery ke Sales",record.actualDelivery],["Progress (%)",record.progress],["Planing job",record.planningJob],["Data delivery",record.dataDelivery]],
+      detailCommercial:[["Status penawaran",record.quotationStatus],["Nomor quotation",record.quotationNo],["Tanggal release",record.releaseDate],["Status project",record.projectStatus]],
+      detailNotes:[["Note",record.note]]
+    };
+    Object.entries(groups).forEach(([id,fields])=>{const target=$(id);target.innerHTML="";fields.forEach(([label,value])=>addDetailField(id,label,value));});
+    const body=$("detailHistory");body.innerHTML="";$("historyEmpty").hidden=history.length>0;
+    history.forEach(item=>{const tr=document.createElement("tr");[item.timestamp,item.userName||item.userId,item.action,item.fieldKey,item.oldValue,item.newValue].forEach(value=>{const td=document.createElement("td");td.textContent=value||"—";tr.appendChild(td);});body.appendChild(tr);});
+    $("detailContent").hidden=false;$("detailLoading").hidden=true;
+  }
+  async function openInquiryDetail(inquiryNo){
+    const dialog=$("detailDialog");$("detailContent").hidden=true;$("detailLoading").hidden=false;
+    $("detailError").textContent="";$("detailLoading").textContent="Memuat detail "+inquiryNo+"…";
+    if(!dialog.open)dialog.showModal();
+    try{const data=await api("inquiryDetail",{inquiryNo:inquiryNo});renderDetail(data.record,data.history||[]);}
+    catch(error){$("detailLoading").hidden=true;$("detailError").textContent=error.message;}
   }
 
   async function loadDashboard({ forceRefresh = false } = {}) {
@@ -322,6 +355,8 @@
 
   $("refreshBtn").addEventListener("click", () => loadDashboard({ forceRefresh: true }));
   $("searchInput").addEventListener("input", render);
+  $("closeDetailBtn").addEventListener("click",()=> $("detailDialog").close());
+  $("detailDialog").addEventListener("click",event=>{if(event.target===$("detailDialog"))$("detailDialog").close();});
   document.querySelectorAll("[data-kpi]").forEach(card => card.addEventListener("click", () => { activeKpiFilter = card.dataset.kpi === "total" ? "all" : card.dataset.kpi; render(); $("inquiryRows").closest(".data-panel").scrollIntoView({behavior:"smooth",block:"start"}); }));
 
   if (sessionToken) {
