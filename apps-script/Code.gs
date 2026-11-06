@@ -73,8 +73,15 @@ function ownerSetUserPassword() {
 
   const idx = table.rows.findIndex(row => String(row[idCol]).trim() === userId);
   if (idx < 0) throw new Error("USER_ID tidak ditemukan di USERS.");
+  let pepper = props.getProperty("PASSWORD_PEPPER");
+  if (!pepper) {
+    pepper = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "") +
+      Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");
+    props.setProperty("PASSWORD_PEPPER", pepper);
+  }
   const salt = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");
-  const hash = pbkdf2Hex_(password, salt, 120000);
+  const derivedKey = pbkdf2Hex_(password, salt, 120000);
+  const hash = passwordVerifier_(derivedKey);
   const rowNumber = table.headerRow + idx + 1;
   sheet.getRange(rowNumber, saltCol + 1).setValue(salt);
   sheet.getRange(rowNumber, hashCol + 1).setValue(hash);
@@ -106,11 +113,12 @@ function beginLogin_(payload) {
   const lookupMs = Date.now() - lookupStarted;
   const challengeId = Utilities.getUuid() + Utilities.getUuid();
   const nonce = Utilities.getUuid() + Utilities.getUuid();
+  const storedHash = active ? String(row[table.map.PASSWORD_HASH] || "") : "";
   const state = {
     identity: identity,
     userId: active ? String(row[table.map.USER_ID]) : "",
-    storedHash: active ? String(row[table.map.PASSWORD_HASH]) : "",
-    valid: Boolean(active && row[table.map.PASSWORD_SALT] && row[table.map.PASSWORD_HASH]),
+    valid: Boolean(active && row[table.map.PASSWORD_SALT] && storedHash.indexOf("v2$") === 0),
+    upgradeRequired: Boolean(active && storedHash && storedHash.indexOf("v2$") !== 0),
     nonce: nonce
   };
   CacheService.getScriptCache().put("SA_LOGIN_CHALLENGE_" + challengeId, JSON.stringify(state), 90);
@@ -123,27 +131,36 @@ function beginLogin_(payload) {
 function completeLogin_(payload) {
   const challengeId = String(payload.challengeId || "");
   const proof = String(payload.proof || "").toLowerCase();
-  if (!challengeId || !/^[a-f0-9]{64}$/.test(proof)) throw new Error("USER_ID/email atau password salah.");
+  const derivedKey = String(payload.derivedKey || "").toLowerCase();
+  if (!challengeId || !/^[a-f0-9]{64}$/.test(proof) || !/^[a-f0-9]{64}$/.test(derivedKey)) {
+    throw new Error("USER_ID/email atau password salah.");
+  }
   const cache = CacheService.getScriptCache();
   const challengeKey = "SA_LOGIN_CHALLENGE_" + challengeId;
   const raw = cache.get(challengeKey);
   cache.remove(challengeKey);
   if (!raw) throw new Error("Sesi login kedaluwarsa. Silakan coba lagi.");
   const challenge = JSON.parse(raw);
-  if (!challenge.valid || !challenge.storedHash) throw new Error("USER_ID/email atau password salah.");
+  if (challenge.upgradeRequired) {
+    throw new Error("Password akun perlu diatur ulang oleh Owner setelah pembaruan keamanan.");
+  }
+  if (!challenge.valid) throw new Error("USER_ID/email atau password salah.");
 
   const proofStarted = Date.now();
   const message = challenge.nonce + "|" + challengeId + "|" + challenge.identity;
-  const expected = hmacHex_(message, hexToBytes_(challenge.storedHash));
+  const expected = hmacHex_(message, hexToBytes_(derivedKey));
   const proofVerifyMs = Date.now() - proofStarted;
   if (!safeEqual_(proof, expected)) throw new Error("USER_ID/email atau password salah.");
 
   const usersRead = readUsersTableCachedDetailed_();
   const table = usersRead.table;
   const userRow = table.rows.find(r => String(r[table.map.USER_ID] || "") === challenge.userId);
-  if (!userRow || !isActive_(userRow[table.map.ACTIVE]) ||
-      !safeEqual_(String(userRow[table.map.PASSWORD_HASH] || ""), challenge.storedHash)) {
-    throw new Error("Akun tidak aktif atau kredensial sudah berubah.");
+  if (!userRow || !isActive_(userRow[table.map.ACTIVE])) {
+    throw new Error("Akun tidak aktif atau tidak lagi tersedia.");
+  }
+  const currentVerifier = String(userRow[table.map.PASSWORD_HASH] || "");
+  if (!safeEqual_(currentVerifier, passwordVerifier_(derivedKey))) {
+    throw new Error("USER_ID/email atau password salah.");
   }
 
   const user = publicUser_(userRow, table.map);
@@ -159,6 +176,12 @@ function completeLogin_(payload) {
       usersCacheHit: usersRead.cacheHit, auditMs: auditMs
     }
   };
+}
+
+function passwordVerifier_(derivedKeyHex) {
+  const pepper = PropertiesService.getScriptProperties().getProperty("PASSWORD_PEPPER");
+  if (!pepper) throw new Error("PASSWORD_PEPPER belum dibuat. Owner harus mengatur ulang password.");
+  return "v2$" + hmacHex_(String(derivedKeyHex), Utilities.newBlob(pepper).getBytes());
 }
 
 function hexToBytes_(hex) {
