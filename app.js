@@ -13,6 +13,7 @@
   let lastLoginMs = null;
   let lastLoginDiagnostics = null;
   let activeKpiFilter = "all";
+  let activeChartFilter = null;
   let currentUser = null;
   let activeInquiryNo = "";
   let activeEditableFields = [];
@@ -136,12 +137,80 @@
     target.className="donut-layout";target.append(wrap,legend);
   }
 
+  const chartPalette=["#477fcf","#f04b3e","#f2b400","#28a9a2","#8a73c7","#6b9a52","#d17aa6","#7b8798","#e18b35"];
+  function normalizedCategory(value){const text=String(value||"").trim();return text||"Belum diisi";}
+  function categoryEntries(getter){return countBy(records,getter).sort((a,b)=>b[1]-a[1]);}
+  function setChartFilter(filters,label){
+    activeChartFilter={filters:filters,label:label};
+    $("clearChartFilter").hidden=false;$("clearChartFilter").textContent="Hapus filter: "+label;
+    render();$("inquiryRows").scrollIntoView({behavior:"smooth",block:"start"});
+  }
+  function chartCategoryButton(label,value,color,filters){
+    const button=document.createElement("button");button.type="button";button.className="chart-legend-button";
+    const dot=document.createElement("i");dot.className="chart-legend-dot";dot.style.background=color;
+    const name=document.createElement("span");name.textContent=label;
+    const count=document.createElement("strong");count.textContent=value.toLocaleString("id-ID");
+    button.append(dot,name,count);button.addEventListener("click",()=>setChartFilter(filters,label));return button;
+  }
+  function renderPieChart(targetId,entries,field){
+    const target=$(targetId);target.innerHTML="";const total=entries.reduce((sum,item)=>sum+item[1],0);
+    if(!total){target.textContent="Belum ada data.";target.className="pie-layout chart-empty";return;}
+    let cursor=0;const slices=entries.map(([label,value],i)=>{const start=cursor;cursor+=value/total*100;return chartPalette[i%chartPalette.length]+" "+start+"% "+cursor+"%";});
+    const pie=document.createElement("div");pie.className="pie-chart";pie.style.background="conic-gradient("+slices.join(",")+")";
+    const legend=document.createElement("div");legend.className="pie-legend";
+    entries.forEach(([label,value],i)=>legend.appendChild(chartCategoryButton(label+" · "+Math.round(value/total*100)+"%",value,chartPalette[i%chartPalette.length],[{field,value:label==="Belum diisi"?"":label}])));
+    target.className="pie-layout";target.append(pie,legend);
+  }
+  function renderStackedProjectRank(){
+    const target=$("projectRankChart");target.innerHTML="";
+    const ranks=["AA","AB","BA","BB","-","Belum diisi"];const equipment=categoryEntries(r=>r.equipment);
+    if(!equipment.length){target.textContent="Belum ada data.";return;}
+    const legend=document.createElement("div");legend.className="stacked-legend";
+    ranks.forEach((rank,i)=>legend.appendChild(chartCategoryButton(rank,0,chartPalette[i],[{field:"inquiryRank",value:rank==="Belum diisi"?"":rank}])));
+    target.appendChild(legend);
+    equipment.forEach(([kind])=>{
+      const row=document.createElement("div");row.className="stacked-row";
+      const label=document.createElement("span");label.className="stacked-label";label.textContent=kind;
+      const track=document.createElement("div");track.className="stacked-track";
+      const totalCount=records.filter(r=>normalizedCategory(r.equipment)===kind).length;
+      ranks.forEach((rank,i)=>{
+        const count=records.filter(r=>normalizedCategory(r.equipment)===kind&&normalizedCategory(r.inquiryRank)===rank).length;if(!count)return;
+        const segment=document.createElement("button");segment.type="button";segment.className="stacked-segment";segment.style.width=(count/totalCount*100)+"%";segment.style.background=chartPalette[i];segment.title=kind+" · "+rank+": "+count;
+        segment.addEventListener("click",()=>setChartFilter([{field:"equipment",value:kind==="Belum diisi"?"":kind},{field:"inquiryRank",value:rank==="Belum diisi"?"":rank}],kind+" / "+rank));track.appendChild(segment);
+      });
+      const total=document.createElement("strong");total.className="bar-value";total.textContent=totalCount;row.append(label,track,total);target.appendChild(row);
+    });
+  }
+  function renderPlanningQuotation(){
+    const target=$("planningQuotationChart");target.innerHTML="";
+    const items=[
+      {label:"Finished planning",value:records.filter(r=>String(r.planningStatus||"").trim().toUpperCase()==="FINISHED").length,filters:[{field:"planningStatus",value:"FINISHED"}]},
+      {label:"Quotation released",value:records.filter(r=>String(r.quotationStatus||"").trim().toUpperCase()==="RELEASED").length,filters:[{field:"quotationStatus",value:"RELEASED"}]}
+    ];const max=Math.max(1,...items.map(x=>x.value));
+    items.forEach((item,i)=>{
+      const wrap=document.createElement("button");wrap.type="button";wrap.className="column-item";wrap.addEventListener("click",()=>setChartFilter(item.filters,item.label));
+      const number=document.createElement("strong");number.textContent=item.value.toLocaleString("id-ID");
+      const track=document.createElement("div");track.className="column-track";
+      const fill=document.createElement("span");fill.className="column-fill";fill.style.height=(item.value/max*100)+"%";fill.style.background=chartPalette[i];track.appendChild(fill);
+      const label=document.createElement("span");label.textContent=item.label;wrap.append(number,track,label);target.appendChild(wrap);
+    });
+  }
+  function matchesChartFilters(record){
+    if(!activeChartFilter)return true;
+    return activeChartFilter.filters.every(({field,value})=>normalizedCategory(record[field]).toLowerCase()===normalizedCategory(value).toLowerCase());
+  }
+
   function renderAnalytics() {
     if(guestMode){$("analyticsSection").hidden=true;$("deadlineSection").hidden=true;return;}
     $("analyticsSection").hidden=false;$("deadlineSection").hidden=false;
-    renderBars("inquiryRankChart",countBy(records,r=>r.inquiryRank));
-    renderBars("quotationChart",countBy(records,r=>r.quotationStatus));
-    renderDonut(countBy(records,r=>r.projectStatus));
+    renderPieChart("kindWorksChart",categoryEntries(r=>r.equipment),"equipment");
+    renderBars("inquiryRankChart",categoryEntries(r=>r.inquiryRank));
+    renderStackedProjectRank();
+    renderPieChart("requesterChart",categoryEntries(r=>r.department),"department");
+    renderBars("planningStatusChart",categoryEntries(r=>r.planningStatus));
+    renderDonut(categoryEntries(r=>r.projectStatus));
+    renderPlanningQuotation();
+    renderPieChart("customerSpecChart",categoryEntries(r=>r.customerSpec),"customerSpec");
     renderBars("plannerPerformance",countBy(records.filter(r=>r.planner),r=>r.planner),5);
     renderBars("salesPerformance",countBy(records.filter(r=>r.salesPic),r=>r.salesPic),5);
     const deadlines=records.map(record=>({record,state:deadlineState(record)})).filter(item=>item.state)
@@ -161,7 +230,7 @@
     $("lost").textContent=Number(summary.lost||0).toLocaleString("id-ID");
     renderAnalytics();
     const term=$("searchInput").value.trim().toLowerCase();
-    let source=records;
+    let source=records.filter(matchesChartFilters);
     if(activeKpiFilter==="quotation")source=source.filter(r=>String(r.quotationNo||"").trim());
     if(activeKpiFilter==="getOrder")source=source.filter(r=>String(r.projectStatus||"").trim().toUpperCase()==="GET ORDER");
     if(activeKpiFilter==="lost")source=source.filter(r=>String(r.projectStatus||"").trim().toUpperCase()==="LOST");
@@ -480,6 +549,7 @@
   });
 
   $("refreshBtn").addEventListener("click", () => loadDashboard({ forceRefresh: true }));
+  $("clearChartFilter").addEventListener("click",()=>{activeChartFilter=null;$("clearChartFilter").hidden=true;render();});
   $("searchInput").addEventListener("input", render);
   $("closeDetailBtn").addEventListener("click",()=> $("detailDialog").close());
   $("detailDialog").addEventListener("click",event=>{if(event.target===$("detailDialog"))$("detailDialog").close();});
