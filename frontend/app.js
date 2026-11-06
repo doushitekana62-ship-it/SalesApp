@@ -12,6 +12,7 @@
   let lastApiTiming = null;
   let lastLoginMs = null;
   let lastLoginDiagnostics = null;
+  let activeKpiFilter = "all";
 
   async function api(action, payload = {}) {
     if (!API || API.includes("PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL")) {
@@ -61,46 +62,106 @@
     return records.filter(r => String(r.projectStatus || "").trim().toUpperCase() === status).length;
   }
 
-  function render() {
-    const summary = dashboardSummary || {
-      total: records.length,
-      quotationReleased: records.filter(r => String(r.quotationNo || "").trim()).length,
-      getOrder: countStatus("GET ORDER"),
-      lost: countStatus("LOST")
-    };
-    $("totalInquiry").textContent = Number(summary.total || 0).toLocaleString("id-ID");
-    $("quotationReleased").textContent = Number(summary.quotationReleased || 0).toLocaleString("id-ID");
-    $("getOrder").textContent = Number(summary.getOrder || 0).toLocaleString("id-ID");
-    $("lost").textContent = Number(summary.lost || 0).toLocaleString("id-ID");
-
-    const term = $("searchInput").value.trim().toLowerCase();
-    const filtered = records.filter(r =>
-      [r.inquiryNo, r.customer, r.project, r.equipment, r.planner, r.salesPic, r.quotationNo, r.projectStatus]
-        .join(" ").toLowerCase().includes(term)
-    ).slice(0, 100);
-
-    $("inquiryRows").innerHTML = "";
-    if (!filtered.length) {
-      const tr = document.createElement("tr");
-      const td = document.createElement("td");
-      td.colSpan = 8;
-      td.className = "empty";
-      td.textContent = "Tidak ada data yang cocok.";
-      tr.appendChild(td);
-      $("inquiryRows").appendChild(tr);
-      return;
+  function parseDate(value) {
+    if (!value) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    const text = String(value).trim();
+    if (!text || text === "—" || text === "-") return null;
+    let match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    match = text.match(/^(\d{1,2})[-\s]([A-Za-z]{3,})[-\s](\d{4})$/);
+    if (match) {
+      const months = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+      const month = months[match[2].slice(0,3).toLowerCase()];
+      if (month !== undefined) return new Date(Number(match[3]), month, Number(match[1]));
     }
+    const parsed = new Date(text);
+    return Number.isNaN(parsed.getTime()) ? null : new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  }
 
-    filtered.forEach(r => {
-      const tr = document.createElement("tr");
-      [r.inquiryNo, r.customer, r.project, r.equipment, r.planner, r.salesPic, r.quotationNo, r.projectStatus]
-        .forEach(value => {
-          const td = document.createElement("td");
-          td.textContent = value || "—";
-          tr.appendChild(td);
-        });
-      $("inquiryRows").appendChild(tr);
+  function deadlineState(record) {
+    if (record.actualDelivery) return null;
+    const due = parseDate(record.dueDate);
+    if (!due) return null;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const days = Math.round((due.getTime() - today.getTime()) / 86400000);
+    if (days < 0) return {kind:"overdue",days:Math.abs(days),label:"Terlambat "+Math.abs(days)+" hari"};
+    if (days <= 7) return {kind:"soon",days,label:days===0?"Jatuh tempo hari ini":days+" hari lagi"};
+    return null;
+  }
+
+  function countBy(values, getter) {
+    const counts = {};
+    values.forEach(item => { const raw=String(getter(item)||"").trim(); const label=raw||"Belum diisi"; counts[label]=(counts[label]||0)+1; });
+    return Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  }
+
+  function renderBars(targetId, entries, limit=8) {
+    const target=$(targetId); target.innerHTML="";
+    const list=entries.slice(0,limit);
+    if(!list.length){target.textContent="Belum ada data.";target.className="bar-chart chart-empty";return;}
+    target.className="bar-chart";
+    const max=Math.max(1,...list.map(item=>item[1]));
+    list.forEach(([label,value])=>{
+      const row=document.createElement("div");row.className="bar-row";
+      const name=document.createElement("span");name.className="bar-label";name.textContent=label;
+      const track=document.createElement("div");track.className="bar-track";
+      const fill=document.createElement("span");fill.className="bar-fill";fill.style.width=Math.max(2,value/max*100)+"%";track.appendChild(fill);
+      const count=document.createElement("strong");count.className="bar-value";count.textContent=value.toLocaleString("id-ID");
+      row.append(name,track,count);target.appendChild(row);
     });
+  }
+
+  function renderDonut(entries) {
+    const target=$("projectDonut");target.innerHTML="";
+    const total=entries.reduce((sum,item)=>sum+item[1],0);
+    if(!total){target.textContent="Belum ada data.";target.className="donut-layout chart-empty";return;}
+    const palette=["#24456f","#5c83b7","#8aa5c7","#d2a85c","#9b7180","#7a8798","#6c9a8b"];
+    let cursor=0;
+    const segments=entries.map(([label,value],index)=>{const start=cursor;cursor+=value/total*100;return palette[index%palette.length]+" "+start+"% "+cursor+"%";});
+    const wrap=document.createElement("div");wrap.className="donut";wrap.style.background="conic-gradient("+segments.join(",")+")";
+    const hole=document.createElement("div");hole.className="donut-hole";
+    const totalNode=document.createElement("strong");totalNode.textContent=total.toLocaleString("id-ID");
+    const caption=document.createElement("small");caption.textContent="Project";hole.append(totalNode,caption);wrap.appendChild(hole);
+    const legend=document.createElement("div");legend.className="donut-legend";
+    entries.forEach(([label,value],index)=>{const row=document.createElement("div");row.className="legend-row";const dot=document.createElement("i");dot.style.background=palette[index%palette.length];const name=document.createElement("span");name.textContent=label;const amount=document.createElement("strong");amount.textContent=value+" · "+Math.round(value/total*100)+"%";row.append(dot,name,amount);legend.appendChild(row);});
+    target.className="donut-layout";target.append(wrap,legend);
+  }
+
+  function renderAnalytics() {
+    if(guestMode){$("analyticsSection").hidden=true;$("deadlineSection").hidden=true;return;}
+    $("analyticsSection").hidden=false;$("deadlineSection").hidden=false;
+    renderBars("inquiryRankChart",countBy(records,r=>r.inquiryRank));
+    renderBars("quotationChart",countBy(records,r=>r.quotationStatus));
+    renderDonut(countBy(records,r=>r.projectStatus));
+    renderBars("plannerPerformance",countBy(records.filter(r=>r.planner),r=>r.planner),5);
+    renderBars("salesPerformance",countBy(records.filter(r=>r.salesPic),r=>r.salesPic),5);
+    const deadlines=records.map(record=>({record,state:deadlineState(record)})).filter(item=>item.state)
+      .sort((a,b)=>a.state.kind===b.state.kind?a.state.days-b.state.days:(a.state.kind==="overdue"?-1:1));
+    const overdue=deadlines.filter(item=>item.state.kind==="overdue").length;
+    $("deadlineSummary").textContent=overdue+" terlambat · "+(deadlines.length-overdue)+" mendekati";
+    const body=$("deadlineRows");body.innerHTML="";
+    if(!deadlines.length){const row=document.createElement("tr");const cell=document.createElement("td");cell.colSpan=6;cell.className="empty";cell.textContent="Tidak ada inquiry aktif yang mendekati atau melewati due date dalam 7 hari ke depan.";row.appendChild(cell);body.appendChild(row);return;}
+    deadlines.slice(0,50).forEach(({record,state})=>{const row=document.createElement("tr");[record.inquiryNo,record.customer,record.project,record.planner,record.dueDate].forEach(value=>{const cell=document.createElement("td");cell.textContent=value||"—";row.appendChild(cell);});const status=document.createElement("td");const badge=document.createElement("span");badge.className="deadline-badge "+state.kind;badge.textContent=state.label;status.appendChild(badge);row.appendChild(status);body.appendChild(row);});
+  }
+
+  function render() {
+    const summary=dashboardSummary||{total:records.length,quotationReleased:records.filter(r=>String(r.quotationNo||"").trim()).length,getOrder:countStatus("GET ORDER"),lost:countStatus("LOST")};
+    $("totalInquiry").textContent=Number(summary.total||0).toLocaleString("id-ID");
+    $("quotationReleased").textContent=Number(summary.quotationReleased||0).toLocaleString("id-ID");
+    $("getOrder").textContent=Number(summary.getOrder||0).toLocaleString("id-ID");
+    $("lost").textContent=Number(summary.lost||0).toLocaleString("id-ID");
+    renderAnalytics();
+    const term=$("searchInput").value.trim().toLowerCase();
+    let source=records;
+    if(activeKpiFilter==="quotation")source=source.filter(r=>String(r.quotationNo||"").trim());
+    if(activeKpiFilter==="getOrder")source=source.filter(r=>String(r.projectStatus||"").trim().toUpperCase()==="GET ORDER");
+    if(activeKpiFilter==="lost")source=source.filter(r=>String(r.projectStatus||"").trim().toUpperCase()==="LOST");
+    const filtered=source.filter(r=>[r.inquiryNo,r.customer,r.project,r.equipment,r.planner,r.salesPic,r.quotationNo,r.projectStatus].join(" ").toLowerCase().includes(term)).slice(0,100);
+    document.querySelectorAll("[data-kpi]").forEach(card=>{const selected=card.dataset.kpi===activeKpiFilter||(card.dataset.kpi==="total"&&activeKpiFilter==="all");card.setAttribute("aria-pressed",selected?"true":"false");});
+    $("inquiryRows").innerHTML="";
+    if(!filtered.length){const tr=document.createElement("tr");const td=document.createElement("td");td.colSpan=8;td.className="empty";td.textContent="Tidak ada data yang cocok.";tr.appendChild(td);$("inquiryRows").appendChild(tr);return;}
+    filtered.forEach(r=>{const tr=document.createElement("tr");[r.inquiryNo,r.customer,r.project,r.equipment,r.planner,r.salesPic,r.quotationNo,r.projectStatus].forEach(value=>{const td=document.createElement("td");td.textContent=value||"—";tr.appendChild(td);});$("inquiryRows").appendChild(tr);});
   }
 
   async function loadDashboard({ forceRefresh = false } = {}) {
@@ -261,6 +322,7 @@
 
   $("refreshBtn").addEventListener("click", () => loadDashboard({ forceRefresh: true }));
   $("searchInput").addEventListener("input", render);
+  document.querySelectorAll("[data-kpi]").forEach(card => card.addEventListener("click", () => { activeKpiFilter = card.dataset.kpi === "total" ? "all" : card.dataset.kpi; render(); $("inquiryRows").closest(".data-panel").scrollIntoView({behavior:"smooth",block:"start"}); }));
 
   if (sessionToken) {
     api("me")
