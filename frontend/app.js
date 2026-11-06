@@ -13,6 +13,10 @@
   let lastLoginMs = null;
   let lastLoginDiagnostics = null;
   let activeKpiFilter = "all";
+  let currentUser = null;
+  let activeInquiryNo = "";
+  let activeEditableFields = [];
+  let editorMode = "edit";
 
   async function api(action, payload = {}) {
     if (!API || API.includes("PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL")) {
@@ -49,10 +53,14 @@
   }
 
   function showApp(user) {
+    currentUser = user;
     $("loginView").hidden = true;
     $("appView").hidden = false;
     $("userName").textContent = user.fullName || user.userId;
     $("userRole").textContent = [user.role, user.division].filter(Boolean).join(" · ");
+    const role = String(user.role || "").toUpperCase();
+    const division = String(user.division || "").toUpperCase();
+    $("createInquiryBtn").hidden = !(role === "ADMIN" || role === "SALES" || division === "SALES");
     $("scopeText").textContent = user.role === "GUEST"
       ? "Mode tamu — akses hanya untuk ringkasan yang diizinkan."
       : "Data sesuai hak akses akun " + (user.division || "") + ".";
@@ -171,7 +179,11 @@
     const description=document.createElement("strong");description.textContent=(value===null||value===undefined||String(value).trim()==="")?"—":String(value);
     item.append(term,description);container.appendChild(item);
   }
-  function renderDetail(record,history){
+  function renderDetail(record,history,editableFields=[]){
+    activeInquiryNo = record.inquiryNo || "";
+    activeEditableFields = editableFields;
+    $("editDetailBtn").hidden = editableFields.length === 0;
+    $("detailEditorPanel").hidden = true;
     $("detailTitle").textContent=record.inquiryNo||"Detail inquiry";
     $("detailSubtitle").textContent=(record.customer||"Customer belum diisi")+" · Baris spreadsheet "+record.rowNumber;
     const groups={
@@ -181,6 +193,7 @@
       detailPeople:[["Planner PIC",record.planner],["Tanggal inquiry masuk ke Planner",record.plannerInquiryDate],["Sales PIC",record.salesPic]],
       detailDocuments:[["Technical spec",record.technicalSpec],["Drawing",record.drawing],["Cost table",record.costTable],["Lain-lain",record.otherDocuments]],
       detailProgress:[["Due date data masuk ke Sales",record.dueDate],["Estimasi delivery time",record.estimatedDeliveryTime],["Actual data delivery ke Sales",record.actualDelivery],["Progress (%)",record.progress],["Planing job",record.planningJob],["Data delivery",record.dataDelivery]],
+      detailMaintenance:[["Maintenance update",record.maintenanceUpdate]],
       detailCommercial:[["Status penawaran",record.quotationStatus],["Nomor quotation",record.quotationNo],["Tanggal release",record.releaseDate],["Status project",record.projectStatus]],
       detailNotes:[["Note",record.note]]
     };
@@ -193,9 +206,120 @@
     const dialog=$("detailDialog");$("detailContent").hidden=true;$("detailLoading").hidden=false;
     $("detailError").textContent="";$("detailLoading").textContent="Memuat detail "+inquiryNo+"…";
     if(!dialog.open)dialog.showModal();
-    try{const data=await api("inquiryDetail",{inquiryNo:inquiryNo});renderDetail(data.record,data.history||[]);}
+    try{const data=await api("inquiryDetail",{inquiryNo:inquiryNo});renderDetail(data.record,data.history||[],data.editableFields||[]);}
     catch(error){$("detailLoading").hidden=true;$("detailError").textContent=error.message;}
   }
+
+
+  function closeEditor() {
+    $("detailEditorPanel").hidden = true;
+    $("editDetailBtn").hidden = activeEditableFields.length === 0;
+    $("detailError").textContent = "";
+  }
+
+  function renderEditorFields(fields) {
+    const target = $("inquiryEditorFields");
+    target.innerHTML = "";
+    fields.forEach(field => {
+      const wrap = document.createElement("div");
+      wrap.className = "editor-field" + (field.type === "textarea" ? " full-width" : "");
+      const label = document.createElement("label");
+      label.textContent = field.label;
+      label.htmlFor = "edit_" + field.key;
+      let input;
+      if (field.type === "textarea") {
+        input = document.createElement("textarea");
+        input.rows = 3;
+      } else {
+        input = document.createElement("input");
+        input.type = field.type === "date" ? "date" : (field.type === "percent" ? "number" : "text");
+        if (field.type === "percent") {
+          input.min = "0"; input.max = "100"; input.step = "1";
+        }
+      }
+      input.id = "edit_" + field.key;
+      input.name = field.key;
+      input.value = field.value === null || field.value === undefined ? "" : String(field.value);
+      if (field.required) input.required = true;
+      wrap.append(label,input);
+      target.appendChild(wrap);
+    });
+  }
+
+  function showEditor(fields, mode) {
+    editorMode = mode;
+    $("detailEditorPanel").hidden = false;
+    $("editDetailBtn").hidden = true;
+    $("editorHeading").textContent = mode === "create" ? "Buat inquiry baru" : "Edit data inquiry";
+    $("editorHelp").textContent = mode === "create"
+      ? "Isi nomor inquiry, customer, dan nama project. Data akan langsung ditambahkan ke spreadsheet."
+      : "Field yang tampil adalah field yang dapat diedit oleh divisi akun ini. ADMIN dapat mengubah seluruh field.";
+    $("saveInquiryBtn").textContent = mode === "create" ? "Buat inquiry" : "Simpan perubahan";
+    renderEditorFields(fields);
+    $("detailEditorPanel").scrollIntoView({behavior:"smooth",block:"start"});
+  }
+
+  $("editDetailBtn").addEventListener("click", () => showEditor(activeEditableFields,"edit"));
+  $("cancelEditBtn").addEventListener("click", closeEditor);
+
+  $("inquiryEditorForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    const button = $("saveInquiryBtn");
+    button.disabled = true;
+    button.textContent = "Menyimpan…";
+    $("detailError").textContent = "";
+    const fields = {};
+    $("inquiryEditorFields").querySelectorAll("input,textarea").forEach(input => {
+      fields[input.name] = input.value.trim();
+    });
+    try {
+      if (editorMode === "create") {
+        const result = await api("createInquiry",{fields});
+        $("detailDialog").close();
+        await loadDashboard({forceRefresh:true});
+        await openInquiryDetail(result.inquiryNo);
+      } else {
+        const result = await api("updateInquiry",{inquiryNo:activeInquiryNo,fields});
+        if (!result.updated) {
+          $("detailError").textContent = result.message || "Tidak ada perubahan.";
+        } else {
+          $("detailLoading").hidden = false;
+          $("detailLoading").textContent = result.message + " Memuat ulang data…";
+          $("detailContent").hidden = true;
+          await loadDashboard({forceRefresh:true});
+          await openInquiryDetail(activeInquiryNo);
+        }
+      }
+    } catch (error) {
+      $("detailError").textContent = error.message || "Gagal menyimpan perubahan.";
+    } finally {
+      button.disabled = false;
+      button.textContent = editorMode === "create" ? "Buat inquiry" : "Simpan perubahan";
+    }
+  });
+
+  async function openNewInquiry() {
+    $("detailTitle").textContent = "Inquiry baru";
+    $("detailSubtitle").textContent = "Data akan disimpan langsung ke sheet Inquiry sheet.";
+    $("detailContent").hidden = false;
+    $("detailLoading").hidden = true;
+    $("detailError").textContent = "";
+    $("detailHistory").innerHTML = "";
+    $("historyEmpty").hidden = true;
+    $("editDetailBtn").hidden = true;
+    if (!$("detailDialog").open) $("detailDialog").showModal();
+    try {
+      const schema = await api("inquirySchema");
+      const fields = [{key:"INQUIRY PROJECT NO",label:"Nomor inquiry / Inquiry Project No",type:"text",required:true},...schema.fields];
+      showEditor(fields,"create");
+      ["detailIdentity","detailEquipment","detailRequester","detailPeople","detailDocuments","detailProgress","detailMaintenance","detailCommercial","detailNotes"].forEach(id=>$(id).innerHTML="");
+      $("detailContent").querySelectorAll(".detail-section:not(.editor-panel)").forEach(section=>section.hidden=true);
+    } catch (error) {
+      $("detailError").textContent = error.message;
+    }
+  }
+
+  $("createInquiryBtn").addEventListener("click",openNewInquiry);
 
   async function loadDashboard({ forceRefresh = false } = {}) {
     if (dashboardBusy) return;
@@ -343,6 +467,8 @@
       // Complete local logout even if the server is temporarily unreachable.
     }
     sessionToken = "";
+    currentUser = null;
+    $("createInquiryBtn").hidden = true;
     sessionStorage.removeItem("salesapp_session");
     records = [];
     dashboardSummary = null;
@@ -357,6 +483,7 @@
   $("searchInput").addEventListener("input", render);
   $("closeDetailBtn").addEventListener("click",()=> $("detailDialog").close());
   $("detailDialog").addEventListener("click",event=>{if(event.target===$("detailDialog"))$("detailDialog").close();});
+  $("detailDialog").addEventListener("close",()=>{ $("detailContent").querySelectorAll(".detail-section:not(.editor-panel)").forEach(section=>section.hidden=false); closeEditor(); });
   document.querySelectorAll("[data-kpi]").forEach(card => card.addEventListener("click", () => { activeKpiFilter = card.dataset.kpi === "total" ? "all" : card.dataset.kpi; render(); $("inquiryRows").closest(".data-panel").scrollIntoView({behavior:"smooth",block:"start"}); }));
 
   if (sessionToken) {
