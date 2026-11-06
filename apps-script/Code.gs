@@ -657,31 +657,70 @@ function readInquiryHistory_(inquiryNo) {
  * Append audit events using header names, never positional assumptions.
  * Supports the current 15-column ACTIVITY_LOG schema and legacy header aliases.
  */
-function audit_(action, user, field, recordKey, oldValue, newValue, details) {
-  const sheet = getSheet_(SA.LOG_SHEET);
-  const lastColumn = sheet.getLastColumn();
-  if (lastColumn < 1) throw new Error("ACTIVITY_LOG belum memiliki header.");
-
-  const headerRow = 1;
-  const headers = sheet.getRange(headerRow, 1, 1, lastColumn).getDisplayValues()[0];
-  const map = {};
-  headers.forEach((header, index) => {
-    const key = normalizeHeader_(header);
-    if (key) map[key] = index;
+/**
+ * Locate ACTIVITY_LOG headers instead of assuming they are on row 1.
+ * If the sheet has legacy content but no recognizable header, append a new
+ * canonical header row rather than overwriting or deleting existing history.
+ */
+function activityLogHeader_(sheet) {
+  const lastRow = sheet.getLastRow();
+  const scanRows = Math.min(Math.max(lastRow, 1), 50);
+  const lastCol = Math.max(sheet.getLastColumn(), 15);
+  const rows = sheet.getRange(1, 1, scanRows, lastCol).getDisplayValues();
+  const aliases = {
+    USER_NAME: ["USER_NAME", "FULL_NAME", "NAMA USER", "NAMA PENGGUNA"],
+    INQUIRY_PROJECT_NO: ["INQUIRY_PROJECT_NO", "RECORD_KEY", "INQUIRY NO"],
+    FIELD_KEY: ["FIELD_KEY", "FIELD", "KOLOM"]
+  };
+  let best = null;
+  rows.forEach((row, index) => {
+    const normalized = row.map(normalizeHeader_);
+    const has = key => (aliases[key] || [key]).some(alias => normalized.includes(alias));
+    const score = ["TIMESTAMP","USER_ID","ACTION","ROLE","DIVISION","LOG_ID"].filter(has).length
+      + (has("USER_NAME") ? 1 : 0);
+    if (score >= 3 && (!best || score > best.score)) {
+      const map = {};
+      normalized.forEach((key, col) => { if (key) map[key] = col; });
+      best = { row: index + 1, map: map, score: score, lastColumn: lastCol };
+    }
   });
-
-  const required = ["LOG_ID", "TIMESTAMP", "USER_ID", "USER_NAME", "ROLE", "DIVISION", "ACTION"];
-  const missing = required.filter(key => map[key] === undefined);
-  if (missing.length) {
-    throw new Error("Header ACTIVITY_LOG tidak lengkap: " + missing.join(", "));
+  if (best) {
+    const aliasMap = {
+      USER_NAME: ["USER_NAME","FULL_NAME","NAMA USER","NAMA PENGGUNA"],
+      INQUIRY_PROJECT_NO: ["INQUIRY_PROJECT_NO","RECORD_KEY","INQUIRY NO"],
+      FIELD_KEY: ["FIELD_KEY","FIELD","KOLOM"]
+    };
+    Object.keys(aliasMap).forEach(key => {
+      if (best.map[key] === undefined) {
+        const found = aliasMap[key].find(alias => best.map[alias] !== undefined);
+        if (found) best.map[key] = best.map[found];
+      }
+    });
+    return best;
   }
 
+  const headerRow = lastRow === 0 ? 1 : lastRow + 1;
+  const headers = ["LOG_ID","TIMESTAMP","USER_ID","USER_NAME","ROLE","DIVISION","ACTION",
+    "INQUIRY_PROJECT_NO","SHEET_NAME","ROW_NUMBER","FIELD_KEY","OLD_VALUE","NEW_VALUE","REQUEST_ID","SOURCE"];
+  sheet.getRange(headerRow, 1, 1, headers.length).setValues([headers]);
+  sheet.getRange(headerRow, 1, 1, headers.length).setFontWeight("bold");
+  return { row: headerRow, map: Object.fromEntries(headers.map((key,index)=>[key,index])),
+    score: headers.length, lastColumn: headers.length };
+}
+
+function audit_(action, user, field, recordKey, oldValue, newValue, details) {
+  const sheet = getSheet_(SA.LOG_SHEET);
+  const header = activityLogHeader_(sheet);
+  const map = header.map;
+  const required = ["TIMESTAMP","USER_ID","ACTION"];
+  const missing = required.filter(key => map[key] === undefined);
+  if (missing.length) throw new Error("Header ACTIVITY_LOG tidak dapat dikenali. Kolom wajib: " + missing.join(", "));
+
   const extra = details || {};
-  const values = new Array(lastColumn).fill("");
-  const eventId = Utilities.getUuid();
-  const requestId = String(extra.requestId || Utilities.getUuid());
+  const width = Math.max(sheet.getLastColumn(), header.lastColumn || 0);
+  const values = new Array(width).fill("");
   const event = {
-    LOG_ID: eventId,
+    LOG_ID: Utilities.getUuid(),
     TIMESTAMP: new Date(),
     USER_ID: user ? user.userId : "",
     USER_NAME: user ? user.fullName : "",
@@ -690,32 +729,33 @@ function audit_(action, user, field, recordKey, oldValue, newValue, details) {
     ACTION: String(action || ""),
     INQUIRY_PROJECT_NO: String(extra.inquiryProjectNo || recordKey || ""),
     SHEET_NAME: String(extra.sheetName || (
-      String(action).toUpperCase() === "LOGIN" || String(action).toUpperCase() === "LOGOUT"
-        ? "Authentication" : ""
+      ["LOGIN","LOGOUT"].includes(String(action).toUpperCase()) ? "Authentication" : ""
     )),
     ROW_NUMBER: extra.rowNumber === undefined || extra.rowNumber === null ? "" : extra.rowNumber,
-    FIELD_KEY: String(extra.fieldKey || ((String(action).toUpperCase() === "LOGIN" || String(action).toUpperCase() === "LOGOUT") ? "" : (field || ""))),
+    FIELD_KEY: String(extra.fieldKey || (
+      ["LOGIN","LOGOUT"].includes(String(action).toUpperCase()) ? "" : (field || "")
+    )),
     OLD_VALUE: oldValue === undefined || oldValue === null ? "" : String(oldValue),
     NEW_VALUE: newValue === undefined || newValue === null ? "" : String(newValue),
-    REQUEST_ID: requestId,
+    REQUEST_ID: String(extra.requestId || Utilities.getUuid()),
     SOURCE: String(extra.source || "WEB_APP")
   };
-
   const aliases = {
-    USER_NAME: ["USER_NAME", "FULL_NAME"],
-    INQUIRY_PROJECT_NO: ["INQUIRY_PROJECT_NO", "RECORD_KEY"],
-    FIELD_KEY: ["FIELD_KEY", "FIELD"]
+    USER_NAME:["USER_NAME","FULL_NAME","NAMA USER","NAMA PENGGUNA"],
+    INQUIRY_PROJECT_NO:["INQUIRY_PROJECT_NO","RECORD_KEY","INQUIRY NO"],
+    FIELD_KEY:["FIELD_KEY","FIELD","KOLOM"]
   };
   Object.keys(event).forEach(key => {
-    const target = (aliases[key] || [key]).find(candidate => map[candidate] !== undefined);
+    const candidates = aliases[key] || [key];
+    const target = candidates.find(candidate => map[candidate] !== undefined);
     if (target !== undefined) values[map[target]] = event[key];
   });
 
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    const nextRow = Math.max(sheet.getLastRow() + 1, headerRow + 1);
-    sheet.getRange(nextRow, 1, 1, lastColumn).setValues([values]);
+    const nextRow = Math.max(sheet.getLastRow() + 1, header.row + 1);
+    sheet.getRange(nextRow, 1, 1, width).setValues([values]);
   } finally {
     lock.releaseLock();
   }
