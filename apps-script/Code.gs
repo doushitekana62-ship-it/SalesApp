@@ -77,6 +77,7 @@ function ownerSetUserPassword() {
   sheet.getRange(rowNumber, saltCol + 1).setValue(salt);
   sheet.getRange(rowNumber, hashCol + 1).setValue(hash);
   SpreadsheetApp.flush();
+  CacheService.getScriptCache().remove("SA_USERS_TABLE_V1");
   ui.alert("Password berhasil disimpan untuk USER_ID " + userId + ". Password asli tidak disimpan di spreadsheet.");
 }
 
@@ -85,7 +86,7 @@ function login_(payload) {
   const password = String(payload.password || "");
   if (!identity || !password) throw new Error("USER_ID/email dan password wajib diisi.");
 
-  const table = readUsersTable_(getSheet_(SA.USERS_SHEET));
+  const table = readUsersTableCached_();
   const required = ["USER_ID", "EMAIL", "FULL_NAME", "ROLE", "DIVISION", "ACTIVE", "PASSWORD_SALT", "PASSWORD_HASH"];
   required.forEach(k => { if (table.map[k] === undefined) throw new Error("Kolom USERS tidak ditemukan: " + k); });
 
@@ -266,6 +267,18 @@ function readInquiryTable_(sheet) {
   if (end < 0) return {map:map,rows:[],headerRow:"3-6"};
   const rows = sheet.getRange(first,1,end+1,29).getValues();
   return {map:map,rows:rows,headerRow:"3-6 (fixed map)",lastDataRow:first+end};
+}
+
+function readUsersTableCached_() {
+  const cache = CacheService.getScriptCache();
+  const key = "SA_USERS_TABLE_V1";
+  const value = cache.get(key);
+  if (value) {
+    try { return JSON.parse(value); } catch (e) { cache.remove(key); }
+  }
+  const table = readUsersTable_(getSheet_(SA.USERS_SHEET));
+  cache.put(key, JSON.stringify(table), 30);
+  return table;
 }
 
 function readUsersTable_(sheet) {
