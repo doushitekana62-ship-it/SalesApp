@@ -8,7 +8,7 @@ const SA = Object.freeze({
   USERS_SHEET: "USERS",
   LOG_SHEET: "ACTIVITY_LOG",
   USERS_HEADER_SCAN_ROWS: 20,
-  INQUIRY_HEADER_ROW: 6,
+  INQUIRY_HEADER_SCAN_ROWS: 20,
   INQUIRY_FIRST_ROW: 7,
   SESSION_TTL_SECONDS: 21600
 });
@@ -136,17 +136,17 @@ function requireSession_(token) {
 function dashboard_(payload) {
   const user = requireSession_(payload.sessionToken);
   const sheet = getSheet_(SA.INQUIRY_SHEET);
-  const table = readTable_(sheet, SA.INQUIRY_HEADER_ROW);
+  const table = readInquiryTable_(sheet);
   const keyIndex = table.map[normalizeHeader_("INQUIRY PROJECT NO")];
   if (keyIndex === undefined) {
     throw new Error("Header INQUIRY PROJECT NO tidak ditemukan pada baris " +
-      SA.INQUIRY_HEADER_ROW + " di sheet '" + SA.INQUIRY_SHEET +
+      table.headerRow + " di sheet '" + SA.INQUIRY_SHEET +
       "'. Header terbaca: " + Object.keys(table.map).join(" | "));
   }
   const validRows = table.rows.filter(row => String(row[keyIndex] || "").trim());
   const diagnostics = {
     sheetName: sheet.getName(),
-    headerRow: SA.INQUIRY_HEADER_ROW,
+    headerRow: table.headerRow,
     lastRow: sheet.getLastRow(),
     lastColumn: sheet.getLastColumn(),
     inquiryKeyColumn: keyIndex + 1,
@@ -238,6 +238,34 @@ function cell_(row, map, key) {
  * Locate the USERS header row instead of assuming it is row 1.
  * The sheet contains a title and explanatory note above the actual table.
  */
+/**
+ * Find the actual inquiry header row. The workbook may have title or section
+ * rows above the table, so do not assume a fixed row number.
+ */
+function readInquiryTable_(sheet) {
+  const scanRows = Math.min(SA.INQUIRY_HEADER_SCAN_ROWS, sheet.getLastRow());
+  const lastCol = sheet.getLastColumn();
+  if (!scanRows || !lastCol) throw new Error("Sheet Inquiry sheet kosong.");
+
+  const candidates = sheet.getRange(1, 1, scanRows, lastCol).getDisplayValues();
+  for (let i = 0; i < candidates.length; i++) {
+    const normalized = candidates[i].map(normalizeHeader_);
+    if (normalized.includes("INQUIRY PROJECT NO") && normalized.includes("CUSTOMER")) {
+      const table = readTable_(sheet, i + 1);
+      table.headerRow = i + 1;
+      return table;
+    }
+  }
+
+  const inspected = candidates.map((row, i) =>
+    "row " + (i + 1) + ": " + row.map(normalizeHeader_).filter(Boolean).join(" | ")
+  ).filter(line => line.indexOf("INQUIRY") >= 0 || line.indexOf("CUSTOMER") >= 0);
+
+  throw new Error("Header lengkap Inquiry sheet tidak ditemukan dalam " + scanRows +
+    " baris pertama. Dibutuhkan INQUIRY PROJECT NO dan CUSTOMER pada baris yang sama. " +
+    "Baris terkait: " + (inspected.join(" || ") || "tidak ada header terkait"));
+}
+
 function readUsersTable_(sheet) {
   const scanRows = Math.min(SA.USERS_HEADER_SCAN_ROWS, sheet.getLastRow());
   const lastCol = sheet.getLastColumn();
