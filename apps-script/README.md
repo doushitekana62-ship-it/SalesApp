@@ -51,3 +51,14 @@ Test with a non-owner account:
 - Existing users complete the one-time Owner password reset after this authentication update.
 
 Back up the workbook before production use.
+
+## ACTIVITY_LOG schema
+The audit writer maps values by header name, not by column position. The current supported schema is:
+`LOG_ID, TIMESTAMP, USER_ID, USER_NAME, ROLE, DIVISION, ACTION, INQUIRY_PROJECT_NO, SHEET_NAME, ROW_NUMBER, FIELD_KEY, OLD_VALUE, NEW_VALUE, REQUEST_ID, SOURCE`.
+
+- Every event receives a unique UUID in LOG_ID and REQUEST_ID.
+- Login/logout events use SHEET_NAME=`Authentication`; they do not populate ROW_NUMBER or FIELD_KEY.
+- Inquiry changes can supply inquiry number, sheet, row, field, old value and new value through the optional audit details object.
+- SOURCE defaults to `WEB_APP`.
+- Existing historical rows are not rewritten automatically. Their old 10-column layout was written under a different header schema; review or back them up before any manual cleanup.
+- The writer validates required headers and uses a script lock before writing a complete row, preventing concurrent events from colliding.
