@@ -11,6 +11,7 @@
   let loginBusy = false;
   let lastApiTiming = null;
   let lastLoginMs = null;
+  let lastLoginDiagnostics = null;
 
   async function api(action, payload = {}) {
     if (!API || API.includes("PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL")) {
@@ -133,7 +134,15 @@
         ? " API " + lastApiTiming.clientMs + " ms (server " + lastApiTiming.serverMs + " ms)."
         : "";
       const loginTiming = lastLoginMs !== null
-        ? " Login " + (lastLoginMs / 1000).toFixed(1) + " detik."
+        ? " Login " + (lastLoginMs / 1000).toFixed(1) + " detik." +
+          (lastLoginDiagnostics
+            ? " USERS " + (lastLoginDiagnostics.challenge.usersReadMs || 0) + "/" +
+              (lastLoginDiagnostics.verify.usersReadMs || 0) + " ms (" +
+              (lastLoginDiagnostics.challenge.usersCacheHit ? "cache" : "sheet") + "/" +
+              (lastLoginDiagnostics.verify.usersCacheHit ? "cache" : "sheet") +
+              "), proof " + (lastLoginDiagnostics.verify.proofVerifyMs || 0) +
+              " ms, audit " + (lastLoginDiagnostics.verify.auditMs || 0) + " ms."
+            : "")
         : "";
 
       $("notice").textContent = guestMode
@@ -172,9 +181,10 @@
     );
     const message = challenge.nonce + "|" + challenge.challengeId + "|" + identity.toLowerCase();
     const signature = await crypto.subtle.sign("HMAC", hmacKey, encoder.encode(message));
-    return Array.from(new Uint8Array(signature))
+    const toHex = (bytes) => Array.from(new Uint8Array(bytes))
       .map(byte => byte.toString(16).padStart(2, "0"))
       .join("");
+    return { derivedKey: toHex(derivedBits), proof: toHex(signature) };
   }
 
   $("loginForm").addEventListener("submit", async (event) => {
@@ -194,19 +204,25 @@
     try {
       $("loginMessage").textContent = "Menghubungi server…";
       const challenge = await api("loginChallenge", { identity });
+      const challengeTimings = challenge.authTimings || {};
       $("loginMessage").textContent = "Memverifikasi password di perangkat…";
-      const proof = await deriveLoginProof(password, challenge, identity);
+      const credentials = await deriveLoginProof(password, challenge, identity);
       passwordInput.value = "";
 
       $("loginMessage").textContent = "Membuat sesi aman…";
       const data = await api("loginVerify", {
         challengeId: challenge.challengeId,
-        proof: proof
+        derivedKey: credentials.derivedKey,
+        proof: credentials.proof
       });
 
       sessionToken = data.sessionToken;
       sessionStorage.setItem("salesapp_session", sessionToken);
       lastLoginMs = Math.round(performance.now() - started);
+      lastLoginDiagnostics = {
+        challenge: challengeTimings,
+        verify: data.authTimings || {}
+      };
       showApp(data.user);
       await loadDashboard();
     } catch (err) {
@@ -235,6 +251,7 @@
     dashboardSummary = null;
     guestMode = false;
     lastLoginMs = null;
+    lastLoginDiagnostics = null;
     button.disabled = false;
     showLogin();
   });
