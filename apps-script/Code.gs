@@ -263,7 +263,7 @@ function readInquiryTable_(sheet) {
   const headers = new Array(lastCol).fill("");
   for (let col = 0; col < lastCol; col++) {
     for (let row = 0; row < headerGrid.length; row++) {
-      const value = String(headerGrid[row][col] || "").replace(/\\s+/g, " ").trim();
+      const value = String(headerGrid[row][col] || "").replace(/\s+/g, " ").trim();
       if (value) headers[col] = value;
     }
   }
@@ -316,7 +316,7 @@ function readUsersTable_(sheet) {
 }
 
 function normalizeHeader_(value) {
-  return String(value || "").replace(/\\s+/g, " ").trim().toUpperCase();
+  return String(value || "").replace(/\s+/g, " ").trim().toUpperCase();
 }
 
 function readTable_(sheet, headerRow) {
