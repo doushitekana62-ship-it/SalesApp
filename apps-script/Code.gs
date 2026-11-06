@@ -243,58 +243,29 @@ function cell_(row, map, key) {
  * rows above the table, so do not assume a fixed row number.
  */
 function readInquiryTable_(sheet) {
-  // Struktur workbook KAIZEN: header bertingkat pada baris 4-6, data mulai baris 7.
-  const headerStartRow = 4;
-  const headerEndRow = 6;
-  const dataStartRow = 7;
-  const lastRow = sheet.getLastRow();
-  const lastCol = sheet.getLastColumn();
-
-  if (lastCol < 5 || lastRow < headerEndRow) {
-    throw new Error("Sheet Inquiry sheet tidak memiliki struktur header yang diharapkan.");
-  }
-
-  // Merged cells hanya menyimpan teks pada sel kiri-atas. Ambil label
-  // terakhir yang tidak kosong untuk setiap kolom di seluruh baris header.
-  const headerGrid = sheet.getRange(
-    headerStartRow, 1, headerEndRow - headerStartRow + 1, lastCol
-  ).getDisplayValues();
-
-  const headers = new Array(lastCol).fill("");
-  for (let col = 0; col < lastCol; col++) {
-    for (let row = 0; row < headerGrid.length; row++) {
-      const value = String(headerGrid[row][col] || "").replace(/\s+/g, " ").trim();
-      if (value) headers[col] = value;
-    }
-  }
-
-  const map = {};
-  headers.forEach((header, index) => {
-    const key = normalizeHeader_(header);
-    if (key) map[key] = index;
-  });
-
-  const requiredHeaders = ["CUSTOMER", "INQUIRY PROJECT NO", "NAMA PROJECT INQUIRY", "JENIS EQUIPMENT"];
-  const missing = requiredHeaders.filter(name => map[name] === undefined);
-  if (missing.length) {
-    throw new Error(
-      "Header Inquiry sheet tidak cocok. Area header yang dibaca: baris " +
-      headerStartRow + "-" + headerEndRow + ". Kolom wajib tidak ditemukan: " +
-      missing.join(", ") + ". Header hasil pembacaan: " +
-      headers.map(normalizeHeader_).filter(Boolean).join(" | ")
-    );
-  }
-
-  const rows = lastRow >= dataStartRow
-    ? sheet.getRange(dataStartRow, 1, lastRow - dataStartRow + 1, lastCol).getValues()
-    : [];
-
-  return {
-    map: map,
-    rows: rows,
-    headerRow: headerStartRow + "-" + headerEndRow,
-    dataStartRow: dataStartRow
+  const first = 7;
+  const last = sheet.getLastRow();
+  const map = {
+    "NO":0,"CUSTOMER":1,"NAMA PROJECT INQUIRY":2,"JENIS EQUIPMENT":3,
+    "INQUIRY PROJECT NO":4,"NAMA REQUESTER":5,"DEPARTMENT":6,
+    "TECHNICAL SPEC. DARI CUSTOMER":7,"MOM / SPESIFIKASI DARI SALES":8,
+    "INQUIRY RANK":9,"DUE DATE DATA MASUK KE SALES":10,
+    "ESTIMASI DELIVERY TIME":11,"TGL INQUIRY MASUK KE PLANNER":12,
+    "PLANNER PIC":13,"TECHNICAL SPEC":14,"DRAWING":15,"COST TABLE":16,
+    "LAIN-LAIN":17,"ACTUAL DATA DELIVERY KE SALES":18,"PROGRESS (%)":19,
+    "PLANING JOB":21,"DATA DELIVERY":22,"SALES PIC":23,
+    "STATUS PENAWARAN":24,"NO PENAWARAN":25,"TANGGAL RELEASE":26,
+    "STATUS PROJECT":27,"NOTE":28
   };
+  if (last < first) return {map:map,rows:[],headerRow:"3-6"};
+  const keys = sheet.getRange(first,5,last-first+1,1).getDisplayValues();
+  let end = -1;
+  for (let i=keys.length-1;i>=0;i--) {
+    if (String(keys[i][0] || "").trim()) { end=i; break; }
+  }
+  if (end < 0) return {map:map,rows:[],headerRow:"3-6"};
+  const rows = sheet.getRange(first,1,end+1,29).getValues();
+  return {map:map,rows:rows,headerRow:"3-6 (fixed map)",lastDataRow:first+end};
 }
 
 function readUsersTable_(sheet) {
