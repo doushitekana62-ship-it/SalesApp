@@ -328,6 +328,7 @@ function inquiryDetail_(payload) {
     planner:value("PLANNER PIC"), technicalSpec:value("TECHNICAL SPEC"), drawing:value("DRAWING"),
     costTable:value("COST TABLE"), otherDocuments:value("LAIN-LAIN"),
     actualDelivery:value("ACTUAL DATA DELIVERY KE SALES"), progress:formatProgress_(value("PROGRESS (%)")),
+    maintenanceUpdate:value("MAINTENANCE UPDATE"),
     planningJob:value("PLANING JOB"), dataDelivery:value("DATA DELIVERY"), salesPic:value("SALES PIC"),
     quotationStatus:value("STATUS PENAWARAN"), quotationNo:value("NO PENAWARAN"),
     releaseDate:value("TANGGAL RELEASE"), projectStatus:value("STATUS PROJECT"), note:value("NOTE")
@@ -363,6 +364,7 @@ function inquiryFieldDefinitions_() {
     {key:"PROGRESS (%)",label:"Progress (%)",index:19,owner:"PLANNER",type:"percent"},
     {key:"PLANING JOB",label:"Planning job",index:21,owner:"WORKSHOP",multiline:true},
     {key:"DATA DELIVERY",label:"Data delivery",index:22,owner:"PROJECT",multiline:true},
+    {key:"MAINTENANCE UPDATE",label:"Maintenance update",index:29,owner:"MAINTENANCE",multiline:true},
     {key:"SALES PIC",label:"Sales PIC",index:23,owner:"SALES"},
     {key:"STATUS PENAWARAN",label:"Status penawaran",index:24,owner:"SALES"},
     {key:"NO PENAWARAN",label:"Nomor penawaran",index:25,owner:"SALES"},
@@ -392,11 +394,16 @@ function editableFieldDefs_(user) {
 }
 
 function editableFields_(user, record) {
-  const group = userDivisionGroup_(user);
   return editableFieldDefs_(user).map(def => ({
     key:def.key,label:def.label,type:def.type || (def.multiline ? "textarea" : "text"),
-    value: group === "ADMIN" ? (recordValueForKey_(record, def.key)) : recordValueForKey_(record, def.key)
+    value:editorValueForKey_(record, def)
   }));
+}
+
+function editorValueForKey_(record, def) {
+  const value = recordValueForKey_(record, def.key);
+  if (def.type === "percent") return String(value || "").replace("%", "").trim();
+  return value;
 }
 
 function recordValueForKey_(record, key) {
@@ -408,7 +415,7 @@ function recordValueForKey_(record, key) {
     "ESTIMASI DELIVERY TIME":"estimatedDeliveryTime","TGL INQUIRY MASUK KE PLANNER":"plannerInquiryDate",
     "PLANNER PIC":"planner","TECHNICAL SPEC":"technicalSpec","DRAWING":"drawing","COST TABLE":"costTable",
     "LAIN-LAIN":"otherDocuments","ACTUAL DATA DELIVERY KE SALES":"actualDelivery","PROGRESS (%)":"progress",
-    "PLANING JOB":"planningJob","DATA DELIVERY":"dataDelivery","SALES PIC":"salesPic",
+    "PLANING JOB":"planningJob","DATA DELIVERY":"dataDelivery","MAINTENANCE UPDATE":"maintenanceUpdate","SALES PIC":"salesPic",
     "STATUS PENAWARAN":"quotationStatus","NO PENAWARAN":"quotationNo","TANGGAL RELEASE":"releaseDate",
     "STATUS PROJECT":"projectStatus","NOTE":"note"
   };
@@ -428,6 +435,17 @@ function inquirySchema_(payload) {
     })),
     canCreate:true
   };
+}
+
+function ensureMaintenanceColumn_(sheet) {
+  const headerCell = sheet.getRange(6, 30);
+  const current = normalizeHeader_(headerCell.getDisplayValue());
+  if (!current) {
+    headerCell.setValue("MAINTENANCE UPDATE");
+    headerCell.setNote("Kolom tambahan SalesApp untuk input divisi Maintenance. Data inquiry lama tidak diubah.");
+  } else if (current !== "MAINTENANCE UPDATE") {
+    throw new Error("Kolom AD pada Inquiry sheet sudah digunakan (" + current + "). Tentukan kolom Maintenance yang kosong sebelum mengaktifkan input Maintenance.");
+  }
 }
 
 function findInquiryRow_(sheet, inquiryNo) {
@@ -460,6 +478,20 @@ function normalizeWriteValue_(def, raw) {
   return value;
 }
 
+function comparableFieldValue_(def, value) {
+  if (value === null || value === undefined || value === "") return "";
+  if (def.type === "date") {
+    if (value instanceof Date) return Utilities.formatDate(value, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    return String(value).trim();
+  }
+  if (def.type === "percent") {
+    const number = Number(String(value).replace("%", "").trim());
+    if (!Number.isFinite(number)) return String(value).trim();
+    return String(Math.round((number >= 0 && number <= 1 ? number * 100 : number) * 100) / 100);
+  }
+  return String(value).trim();
+}
+
 function updateInquiry_(payload) {
   const user = requireSession_(payload.sessionToken);
   if (userDivisionGroup_(user) === "READONLY") throw new Error("Akun ini hanya memiliki akses baca.");
@@ -485,10 +517,12 @@ function updateInquiry_(payload) {
     keys.forEach(key => {
       const def = defs[key];
       const range = sheet.getRange(rowNumber, def.index + 1);
+      const oldRaw = range.getValue();
       const oldValue = range.getDisplayValue();
       const newValue = normalizeWriteValue_(def, submitted[key]);
-      const compareNew = newValue instanceof Date ? Utilities.formatDate(newValue, Session.getScriptTimeZone(), "yyyy-MM-dd") : String(newValue);
-      if (String(oldValue).trim() === String(compareNew).trim()) return;
+      const compareOld = comparableFieldValue_(def, oldRaw);
+      const compareNew = comparableFieldValue_(def, newValue);
+      if (compareOld === compareNew) return;
       range.setValue(newValue);
       changes.push({key:key,label:def.label,oldValue:oldValue,newValue:compareNew});
     });
@@ -527,8 +561,9 @@ function createInquiry_(payload) {
   let rowNumber, values;
   try {
     if (findInquiryRow_(sheet,inquiryNo) >= 0) throw new Error("Nomor inquiry " + inquiryNo + " sudah digunakan.");
+    ensureMaintenanceColumn_(sheet);
     rowNumber = Math.max(sheet.getLastRow()+1,SA.INQUIRY_FIRST_ROW);
-    values = new Array(29).fill("");
+    values = new Array(30).fill("");
     const sequenceValues = rowNumber > SA.INQUIRY_FIRST_ROW
       ? sheet.getRange(SA.INQUIRY_FIRST_ROW,1,rowNumber-SA.INQUIRY_FIRST_ROW,1).getValues().flat()
       : [];
@@ -541,7 +576,13 @@ function createInquiry_(payload) {
       if (!def) return;
       values[def.index] = normalizeWriteValue_(def,submitted[key]);
     });
-    sheet.getRange(rowNumber,1,1,29).setValues([values]);
+    // Column U (index 21) contains the progress-bar formula; preserve it.
+    sheet.getRange(rowNumber,1,1,20).setValues([values.slice(0,20)]);
+    sheet.getRange(rowNumber,22,1,9).setValues([values.slice(21,30)]);
+    if (rowNumber > SA.INQUIRY_FIRST_ROW) {
+      const previousFormula = sheet.getRange(rowNumber - 1, 21).getFormulaR1C1();
+      if (previousFormula) sheet.getRange(rowNumber, 21).setFormulaR1C1(previousFormula);
+    }
     SpreadsheetApp.flush();
   } finally {
     lock.releaseLock();
@@ -689,6 +730,7 @@ function cell_(row, map, key) {
  * rows above the table, so do not assume a fixed row number.
  */
 function readInquiryTable_(sheet) {
+  ensureMaintenanceColumn_(sheet);
   // A7 = sequence number 1; E7 = inquiry project number (primary record key).
   // Header rows 3-6 contain merged cells and are intentionally not parsed.
   const first = 7;
@@ -703,7 +745,7 @@ function readInquiryTable_(sheet) {
     "LAIN-LAIN":17,"ACTUAL DATA DELIVERY KE SALES":18,"PROGRESS (%)":19,
     "PLANING JOB":21,"DATA DELIVERY":22,"SALES PIC":23,
     "STATUS PENAWARAN":24,"NO PENAWARAN":25,"TANGGAL RELEASE":26,
-    "STATUS PROJECT":27,"NOTE":28
+    "STATUS PROJECT":27,"NOTE":28,"MAINTENANCE UPDATE":29
   };
   if (last < first) return {map:map,rows:[],headerRow:"3-6"};
   const keys = sheet.getRange(first,5,last-first+1,1).getDisplayValues();
@@ -712,7 +754,7 @@ function readInquiryTable_(sheet) {
     if (String(keys[i][0] || "").trim()) { end=i; break; }
   }
   if (end < 0) return {map:map,rows:[],headerRow:"3-6"};
-  const rows = sheet.getRange(first,1,end+1,29).getValues();
+  const rows = sheet.getRange(first,1,end+1,30).getValues();
   return {map:map,rows:rows,headerRow:"3-6 (fixed map)",lastDataRow:first+end};
 }
 
