@@ -291,6 +291,16 @@ function dashboard_(payload) {
 
 
 
+function formatProgress_(value) {
+  const text = String(value === null || value === undefined ? "" : value).trim();
+  if (!text) return "";
+  if (/%$/.test(text)) return text;
+  const number = Number(text);
+  if (!Number.isFinite(number)) return text;
+  if (number >= 0 && number <= 1) return Math.round(number * 100) + "%";
+  return number + "%";
+}
+
 /** Authenticated read-only detail endpoint. Guest accounts cannot read records. */
 function inquiryDetail_(payload) {
   const user = requireSession_(payload.sessionToken);
@@ -314,7 +324,7 @@ function inquiryDetail_(payload) {
     estimatedDeliveryTime:value("ESTIMASI DELIVERY TIME"), plannerInquiryDate:value("TGL INQUIRY MASUK KE PLANNER"),
     planner:value("PLANNER PIC"), technicalSpec:value("TECHNICAL SPEC"), drawing:value("DRAWING"),
     costTable:value("COST TABLE"), otherDocuments:value("LAIN-LAIN"),
-    actualDelivery:value("ACTUAL DATA DELIVERY KE SALES"), progress:value("PROGRESS (%)"),
+    actualDelivery:value("ACTUAL DATA DELIVERY KE SALES"), progress:formatProgress_(value("PROGRESS (%)")),
     planningJob:value("PLANING JOB"), dataDelivery:value("DATA DELIVERY"), salesPic:value("SALES PIC"),
     quotationStatus:value("STATUS PENAWARAN"), quotationNo:value("NO PENAWARAN"),
     releaseDate:value("TANGGAL RELEASE"), projectStatus:value("STATUS PROJECT"), note:value("NOTE")
