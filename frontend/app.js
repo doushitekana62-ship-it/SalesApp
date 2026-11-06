@@ -140,7 +140,8 @@
               (lastLoginDiagnostics.verify.usersReadMs || 0) + " ms (" +
               (lastLoginDiagnostics.challenge.usersCacheHit ? "cache" : "sheet") + "/" +
               (lastLoginDiagnostics.verify.usersCacheHit ? "cache" : "sheet") +
-              "), proof " + (lastLoginDiagnostics.verify.proofVerifyMs || 0) +
+              "), PBKDF2 " + (lastLoginDiagnostics.deriveMs || 0) +
+              " ms, proof " + (lastLoginDiagnostics.verify.proofVerifyMs || 0) +
               " ms, audit " + (lastLoginDiagnostics.verify.auditMs || 0) + " ms."
             : "")
         : "";
