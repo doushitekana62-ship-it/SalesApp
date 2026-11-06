@@ -125,7 +125,7 @@ function requireSession_(token) {
   if (!raw) throw new Error("Sesi berakhir. Silakan login kembali.");
   const session = JSON.parse(raw);
   // Recheck account status and role from USERS on every protected request.
-  const table = readUsersTable_(getSheet_(SA.USERS_SHEET));
+  const table = readUsersTableCached_();
   const row = table.rows.find(r => String(r[table.map.USER_ID]) === String(session.userId));
   if (!row || !isActive_(row[table.map.ACTIVE])) {
     CacheService.getScriptCache().remove("SA_SESSION_" + token);
