@@ -161,16 +161,25 @@ function readInquiryTable_(sheet) {
   return {map:map,rows:rows,headerRow:"3-6 (fixed map)",lastDataRow:first+end};
 }
 
-function readUsersTableCached_() {
+function readUsersTableCachedDetailed_() {
+  const started = Date.now();
   const cache = CacheService.getScriptCache();
   const key = "SA_USERS_TABLE_V1";
   const value = cache.get(key);
   if (value) {
-    try { return JSON.parse(value); } catch (e) { cache.remove(key); }
+    try {
+      return { table: JSON.parse(value), cacheHit: true, elapsedMs: Date.now() - started };
+    } catch (e) {
+      cache.remove(key);
+    }
   }
   const table = readUsersTable_(getSheet_(SA.USERS_SHEET));
   cache.put(key, JSON.stringify(table), 30);
-  return table;
+  return { table: table, cacheHit: false, elapsedMs: Date.now() - started };
+}
+
+function readUsersTableCached_() {
+  return readUsersTableCachedDetailed_().table;
 }
 
 function readUsersTable_(sheet) {
