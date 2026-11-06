@@ -629,14 +629,15 @@ function createInquiry_(payload) {
 
 /** Returns only audit entries associated with the requested inquiry key. */
 function readInquiryHistory_(inquiryNo) {
-  const sheet=getSheet_(SA.LOG_SHEET), lastRow=sheet.getLastRow(), lastCol=sheet.getLastColumn();
-  if(lastRow<2||lastCol<1)return [];
-  const headers=sheet.getRange(1,1,1,lastCol).getDisplayValues()[0], map={};
-  headers.forEach((header,index)=>{const key=normalizeHeader_(header);if(key)map[key]=index;});
-  const keyCol=map.INQUIRY_PROJECT_NO!==undefined?map.INQUIRY_PROJECT_NO:map.RECORD_KEY;
-  if(keyCol===undefined)return [];
-  const rows=sheet.getRange(2,1,lastRow-1,lastCol).getValues();
-  return rows.map((row,index)=>({row:row,rowNumber:index+2}))
+  const sheet = getSheet_(SA.LOG_SHEET);
+  const header = activityLogHeader_(sheet);
+  const map = header.map;
+  const keyCol = map.INQUIRY_PROJECT_NO !== undefined ? map.INQUIRY_PROJECT_NO : map.RECORD_KEY;
+  if (keyCol === undefined) return [];
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= header.row) return [];
+  const rows = sheet.getRange(header.row + 1, 1, lastRow - header.row, sheet.getLastColumn()).getValues();
+  return rows.map((row,index)=>({row:row,rowNumber:header.row+index+1}))
     .filter(item=>String(item.row[keyCol]||"").trim()===inquiryNo)
     .map(item=>{
       const get=key=>map[key]===undefined?"":item.row[map[key]];
@@ -644,14 +645,14 @@ function readInquiryHistory_(inquiryNo) {
       return {
         logId:String(get("LOG_ID")||""),
         timestamp:timestamp instanceof Date?Utilities.formatDate(timestamp,Session.getScriptTimeZone(),"yyyy-MM-dd HH:mm:ss"):String(timestamp||""),
-        userName:String(get("USER_NAME")||get("FULL_NAME")||""),userId:String(get("USER_ID")||""),
-        role:String(get("ROLE")||""),division:String(get("DIVISION")||""),action:String(get("ACTION")||""),
-        fieldKey:String(get("FIELD_KEY")||get("FIELD")||""),oldValue:String(get("OLD_VALUE")||""),
-        newValue:String(get("NEW_VALUE")||""),rowNumber:String(get("ROW_NUMBER")||""),source:String(get("SOURCE")||"")
+        userName:String(get("USER_NAME")||get("FULL_NAME")||""),
+        userId:String(get("USER_ID")||""),role:String(get("ROLE")||""),division:String(get("DIVISION")||""),
+        action:String(get("ACTION")||""),fieldKey:String(get("FIELD_KEY")||get("FIELD")||""),
+        oldValue:String(get("OLD_VALUE")||""),newValue:String(get("NEW_VALUE")||""),
+        rowNumber:String(get("ROW_NUMBER")||""),source:String(get("SOURCE")||"")
       };
     }).sort((a,b)=>b.timestamp.localeCompare(a.timestamp)).slice(0,100);
 }
-
 
 /**
  * Append audit events using header names, never positional assumptions.
