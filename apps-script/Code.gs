@@ -443,10 +443,37 @@ function ensureMaintenanceColumn_(sheet) {
   const headerCell = sheet.getRange(6, 30);
   const current = normalizeHeader_(headerCell.getDisplayValue());
   if (!current) {
+    const lastRow = sheet.getLastRow();
+    if (lastRow >= SA.INQUIRY_FIRST_ROW) {
+      const existing = sheet.getRange(SA.INQUIRY_FIRST_ROW, 30, lastRow - SA.INQUIRY_FIRST_ROW + 1, 1).getDisplayValues().flat();
+      if (existing.some(value => String(value || "").trim())) {
+        throw new Error("Kolom AD memiliki data tetapi header AD6 kosong. Periksa kolom AD sebelum mengaktifkan input Maintenance.");
+      }
+    }
     headerCell.setValue("MAINTENANCE UPDATE");
     headerCell.setNote("Kolom tambahan SalesApp untuk input divisi Maintenance. Data inquiry lama tidak diubah.");
   } else if (current !== "MAINTENANCE UPDATE") {
     throw new Error("Kolom AD pada Inquiry sheet sudah digunakan (" + current + "). Tentukan kolom Maintenance yang kosong sebelum mengaktifkan input Maintenance.");
+  }
+}
+
+function nextInquiryRow_(sheet) {
+  const last = sheet.getLastRow();
+  if (last < SA.INQUIRY_FIRST_ROW) return SA.INQUIRY_FIRST_ROW;
+  const keys = sheet.getRange(SA.INQUIRY_FIRST_ROW, 5, last - SA.INQUIRY_FIRST_ROW + 1, 1).getDisplayValues();
+  for (let i = keys.length - 1; i >= 0; i--) {
+    if (String(keys[i][0] || "").trim()) return SA.INQUIRY_FIRST_ROW + i + 1;
+  }
+  return SA.INQUIRY_FIRST_ROW;
+}
+
+function copyProgressFormula_(sheet, targetRow) {
+  for (let row = targetRow - 1; row >= SA.INQUIRY_FIRST_ROW; row--) {
+    const formula = sheet.getRange(row, 21).getFormulaR1C1();
+    if (formula) {
+      sheet.getRange(targetRow, 21).setFormulaR1C1(formula);
+      return;
+    }
   }
 }
 
@@ -564,7 +591,7 @@ function createInquiry_(payload) {
   try {
     if (findInquiryRow_(sheet,inquiryNo) >= 0) throw new Error("Nomor inquiry " + inquiryNo + " sudah digunakan.");
     ensureMaintenanceColumn_(sheet);
-    rowNumber = Math.max(sheet.getLastRow()+1,SA.INQUIRY_FIRST_ROW);
+    rowNumber = nextInquiryRow_(sheet);
     values = new Array(30).fill("");
     const sequenceValues = rowNumber > SA.INQUIRY_FIRST_ROW
       ? sheet.getRange(SA.INQUIRY_FIRST_ROW,1,rowNumber-SA.INQUIRY_FIRST_ROW,1).getValues().flat()
@@ -581,10 +608,7 @@ function createInquiry_(payload) {
     // Column U (index 21) contains the progress-bar formula; preserve it.
     sheet.getRange(rowNumber,1,1,20).setValues([values.slice(0,20)]);
     sheet.getRange(rowNumber,22,1,9).setValues([values.slice(21,30)]);
-    if (rowNumber > SA.INQUIRY_FIRST_ROW) {
-      const previousFormula = sheet.getRange(rowNumber - 1, 21).getFormulaR1C1();
-      if (previousFormula) sheet.getRange(rowNumber, 21).setFormulaR1C1(previousFormula);
-    }
+    copyProgressFormula_(sheet, rowNumber);
     SpreadsheetApp.flush();
   } finally {
     lock.releaseLock();
