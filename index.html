@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#101827">
   <title>SalesApp | Inquiry Control</title>
-  <link rel="stylesheet" href="style.css?v=20261106-stage5">
+  <link rel="stylesheet" href="style.css?v=20261106-stage6">
 </head>
 <body>
   <main class="shell">
@@ -39,9 +39,15 @@
         <button type="button" class="kpi kpi-action" data-kpi="lost" aria-pressed="false"><span>Lost</span><strong id="lost">—</strong><small>Status project LOST</small></button>
       </section>
       <section id="analyticsSection" class="analytics-grid" aria-label="Analitik inquiry">
-        <article class="panel chart-panel"><div class="panel-heading"><div><p class="eyebrow">INQUIRY</p><h2>Distribusi inquiry rank</h2></div></div><div id="inquiryRankChart" class="bar-chart"></div></article>
-        <article class="panel chart-panel"><div class="panel-heading"><div><p class="eyebrow">QUOTATION</p><h2>Status penawaran</h2></div></div><div id="quotationChart" class="bar-chart"></div></article>
-        <article class="panel chart-panel"><div class="panel-heading"><div><p class="eyebrow">PROJECT</p><h2>Status project</h2></div></div><div id="projectDonut" class="donut-layout"></div></article>
+        <div class="analytics-intro"><div><p class="eyebrow">BUSINESS INTELLIGENCE</p><h2>Analisis inquiry</h2><p class="muted small">Grafik dihitung dari data Inquiry sheet. Pilih kategori untuk memfilter daftar inquiry.</p></div><button id="clearChartFilter" class="secondary compact" type="button" hidden>Hapus filter grafik</button></div>
+        <article class="panel chart-panel"><div class="panel-heading"><div><p class="eyebrow">INQUIRY</p><h2>Inquiry Based on Kind of Works</h2></div></div><div id="kindWorksChart" class="pie-layout"></div></article>
+        <article class="panel chart-panel"><div class="panel-heading"><div><p class="eyebrow">INQUIRY RANK</p><h2>Distribusi Inquiry Rank</h2></div></div><div id="inquiryRankChart" class="bar-chart"></div></article>
+        <article class="panel chart-panel"><div class="panel-heading"><div><p class="eyebrow">PROJECT RANK</p><h2>Project Rank by Kind of Works</h2></div></div><div id="projectRankChart" class="stacked-chart"></div></article>
+        <article class="panel chart-panel"><div class="panel-heading"><div><p class="eyebrow">REQUESTER</p><h2>Inquiry Based on Requester</h2></div></div><div id="requesterChart" class="pie-layout"></div></article>
+        <article class="panel chart-panel"><div class="panel-heading"><div><p class="eyebrow">PLANNING</p><h2>Planning Status</h2></div></div><div id="planningStatusChart" class="bar-chart"></div></article>
+        <article class="panel chart-panel"><div class="panel-heading"><div><p class="eyebrow">PROJECT</p><h2>Project Status</h2></div></div><div id="projectDonut" class="donut-layout"></div></article>
+        <article class="panel chart-panel"><div class="panel-heading"><div><p class="eyebrow">PLANNING VS QUOTATION</p><h2>Finished Planning vs Quotation Released</h2></div></div><div id="planningQuotationChart" class="column-chart"></div></article>
+        <article class="panel chart-panel"><div class="panel-heading"><div><p class="eyebrow">CUSTOMER DOCUMENT</p><h2>Inquiry with Customer Specification Document</h2></div></div><div id="customerSpecChart" class="pie-layout"></div></article>
         <article class="panel chart-panel performance-panel"><div class="panel-heading"><div><p class="eyebrow">PERFORMANCE</p><h2>Performa Planner &amp; Sales PIC</h2></div></div><div class="performance-columns"><div><h3>Planner</h3><div id="plannerPerformance" class="bar-chart"></div></div><div><h3>Sales PIC</h3><div id="salesPerformance" class="bar-chart"></div></div></div></article>
       </section>
       <section id="deadlineSection" class="panel deadline-panel">
@@ -74,6 +80,6 @@
     </section>
   </main>
   <script src="config.js"></script>
-  <script src="app.js?v=20261106-stage5"></script>
+  <script src="app.js?v=20261106-stage6"></script>
 </body>
 </html>
