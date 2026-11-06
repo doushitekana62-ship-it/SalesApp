@@ -32,6 +32,9 @@ function doPost(e) {
     else if (action === "logout") data = logout_(payload);
     else if (action === "dashboard") data = dashboard_(payload);
     else if (action === "inquiryDetail") data = inquiryDetail_(payload);
+    else if (action === "inquirySchema") data = inquirySchema_(payload);
+    else if (action === "updateInquiry") data = updateInquiry_(payload);
+    else if (action === "createInquiry") data = createInquiry_(payload);
     else throw new Error("Aksi tidak dikenal.");
     return json_({ ok: true, data: data, meta: { action: action, serverMs: Date.now() - started } });
   } catch (err) {
@@ -329,8 +332,228 @@ function inquiryDetail_(payload) {
     quotationStatus:value("STATUS PENAWARAN"), quotationNo:value("NO PENAWARAN"),
     releaseDate:value("TANGGAL RELEASE"), projectStatus:value("STATUS PROJECT"), note:value("NOTE")
   };
-  return {record:record,history:readInquiryHistory_(inquiryNo),diagnostics:{sheetName:sheet.getName(),rowNumber:record.rowNumber}};
+  return {record:record,history:readInquiryHistory_(inquiryNo),editableFields:editableFields_(user, record),canEditAll:String(user.role).toUpperCase()==="ADMIN",diagnostics:{sheetName:sheet.getName(),rowNumber:record.rowNumber}};
 }
+
+
+/**
+ * Explicit write permissions. These names map to the existing Inquiry sheet
+ * columns; no client-supplied column number is ever accepted.
+ */
+function inquiryFieldDefinitions_() {
+  return [
+    {key:"CUSTOMER",label:"Customer",index:1,owner:"SALES"},
+    {key:"NAMA PROJECT INQUIRY",label:"Nama project inquiry",index:2,owner:"SALES"},
+    {key:"JENIS EQUIPMENT",label:"Jenis equipment",index:3,owner:"SALES"},
+    {key:"INQUIRY PROJECT NO",label:"Inquiry project number",index:4,owner:"ADMIN",immutable:true},
+    {key:"NAMA REQUESTER",label:"Nama requester",index:5,owner:"SALES"},
+    {key:"DEPARTMENT",label:"Department",index:6,owner:"SALES"},
+    {key:"TECHNICAL SPEC. DARI CUSTOMER",label:"Technical spec. dari customer",index:7,owner:"SALES",multiline:true},
+    {key:"MOM / SPESIFIKASI DARI SALES",label:"MOM / spesifikasi dari Sales",index:8,owner:"SALES",multiline:true},
+    {key:"INQUIRY RANK",label:"Inquiry rank",index:9,owner:"SALES"},
+    {key:"DUE DATE DATA MASUK KE SALES",label:"Due date data masuk ke Sales",index:10,owner:"SALES",type:"date"},
+    {key:"ESTIMASI DELIVERY TIME",label:"Estimasi delivery time",index:11,owner:"SALES"},
+    {key:"TGL INQUIRY MASUK KE PLANNER",label:"Tanggal inquiry masuk ke Planner",index:12,owner:"PLANNER",type:"date"},
+    {key:"PLANNER PIC",label:"Planner PIC",index:13,owner:"PLANNER"},
+    {key:"TECHNICAL SPEC",label:"Technical spec",index:14,owner:"PLANNER",multiline:true},
+    {key:"DRAWING",label:"Drawing",index:15,owner:"PLANNER"},
+    {key:"COST TABLE",label:"Cost table",index:16,owner:"PLANNER"},
+    {key:"LAIN-LAIN",label:"Lain-lain",index:17,owner:"PLANNER",multiline:true},
+    {key:"ACTUAL DATA DELIVERY KE SALES",label:"Actual data delivery ke Sales",index:18,owner:"PLANNER",type:"date"},
+    {key:"PROGRESS (%)",label:"Progress (%)",index:19,owner:"PLANNER",type:"percent"},
+    {key:"PLANING JOB",label:"Planning job",index:21,owner:"WORKSHOP",multiline:true},
+    {key:"DATA DELIVERY",label:"Data delivery",index:22,owner:"PROJECT",multiline:true},
+    {key:"SALES PIC",label:"Sales PIC",index:23,owner:"SALES"},
+    {key:"STATUS PENAWARAN",label:"Status penawaran",index:24,owner:"SALES"},
+    {key:"NO PENAWARAN",label:"Nomor penawaran",index:25,owner:"SALES"},
+    {key:"TANGGAL RELEASE",label:"Tanggal release",index:26,owner:"SALES",type:"date"},
+    {key:"STATUS PROJECT",label:"Status project",index:27,owner:"SALES"},
+    {key:"NOTE",label:"Note",index:28,owner:"SALES",multiline:true}
+  ];
+}
+
+function userDivisionGroup_(user) {
+  const role = String(user.role || "").trim().toUpperCase();
+  const division = String(user.division || "").trim().toUpperCase();
+  if (role === "ADMIN") return "ADMIN";
+  if (role === "GUEST" || role === "DIRECTORS" || role === "DIRECTOR" || role === "MANAGEMENT") return "READONLY";
+  const value = role + " " + division;
+  if (/SALES/.test(value)) return "SALES";
+  if (/PLANNER|ENGINEER/.test(value)) return "PLANNER";
+  if (/WORKSHOP|PRODUCTION|PRODUKSI|PPIC/.test(value)) return "WORKSHOP";
+  if (/PROJECT/.test(value)) return "PROJECT";
+  if (/MAINTENANCE/.test(value)) return "MAINTENANCE";
+  return "READONLY";
+}
+
+function editableFieldDefs_(user) {
+  const group = userDivisionGroup_(user);
+  return inquiryFieldDefinitions_().filter(def => !def.immutable && (group === "ADMIN" || def.owner === group));
+}
+
+function editableFields_(user, record) {
+  const group = userDivisionGroup_(user);
+  return editableFieldDefs_(user).map(def => ({
+    key:def.key,label:def.label,type:def.type || (def.multiline ? "textarea" : "text"),
+    value: group === "ADMIN" ? (recordValueForKey_(record, def.key)) : recordValueForKey_(record, def.key)
+  }));
+}
+
+function recordValueForKey_(record, key) {
+  const map = {
+    "CUSTOMER":"customer","NAMA PROJECT INQUIRY":"project","JENIS EQUIPMENT":"equipment",
+    "NAMA REQUESTER":"requester","DEPARTMENT":"department",
+    "TECHNICAL SPEC. DARI CUSTOMER":"customerTechnicalSpec","MOM / SPESIFIKASI DARI SALES":"salesMomSpec",
+    "INQUIRY RANK":"inquiryRank","DUE DATE DATA MASUK KE SALES":"dueDate",
+    "ESTIMASI DELIVERY TIME":"estimatedDeliveryTime","TGL INQUIRY MASUK KE PLANNER":"plannerInquiryDate",
+    "PLANNER PIC":"planner","TECHNICAL SPEC":"technicalSpec","DRAWING":"drawing","COST TABLE":"costTable",
+    "LAIN-LAIN":"otherDocuments","ACTUAL DATA DELIVERY KE SALES":"actualDelivery","PROGRESS (%)":"progress",
+    "PLANING JOB":"planningJob","DATA DELIVERY":"dataDelivery","SALES PIC":"salesPic",
+    "STATUS PENAWARAN":"quotationStatus","NO PENAWARAN":"quotationNo","TANGGAL RELEASE":"releaseDate",
+    "STATUS PROJECT":"projectStatus","NOTE":"note"
+  };
+  return record[map[key]] || "";
+}
+
+function inquirySchema_(payload) {
+  const user = requireSession_(payload.sessionToken);
+  const group = userDivisionGroup_(user);
+  if (group !== "ADMIN" && group !== "SALES") {
+    throw new Error("Hanya ADMIN dan Sales yang dapat membuat inquiry baru.");
+  }
+  return {
+    fields: editableFieldDefs_(user).map(def => ({
+      key:def.key,label:def.label,type:def.type || (def.multiline ? "textarea" : "text"),
+      required:["CUSTOMER","NAMA PROJECT INQUIRY","INQUIRY PROJECT NO"].includes(def.key)
+    })),
+    canCreate:true
+  };
+}
+
+function findInquiryRow_(sheet, inquiryNo) {
+  const last = sheet.getLastRow();
+  if (last < SA.INQUIRY_FIRST_ROW) return -1;
+  const values = sheet.getRange(SA.INQUIRY_FIRST_ROW, 5, last-SA.INQUIRY_FIRST_ROW+1, 1).getDisplayValues();
+  const index = values.findIndex(row => String(row[0] || "").trim() === inquiryNo);
+  return index < 0 ? -1 : SA.INQUIRY_FIRST_ROW + index;
+}
+
+function normalizeWriteValue_(def, raw) {
+  if (raw === null || raw === undefined) return "";
+  let value = String(raw).trim();
+  if (value.length > 5000) throw new Error("Nilai " + def.label + " terlalu panjang (maksimal 5.000 karakter).");
+  if (def.type === "percent") {
+    if (!value) return "";
+    value = value.replace("%","").trim();
+    const number = Number(value);
+    if (!Number.isFinite(number) || number < 0 || number > 100) {
+      throw new Error("Progress harus berupa angka 0 sampai 100.");
+    }
+    return number / 100;
+  }
+  if (def.type === "date") {
+    if (!value) return "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error("Format tanggal " + def.label + " harus YYYY-MM-DD.");
+    const parts = value.split("-").map(Number);
+    return new Date(parts[0], parts[1]-1, parts[2], 12, 0, 0);
+  }
+  return value;
+}
+
+function updateInquiry_(payload) {
+  const user = requireSession_(payload.sessionToken);
+  if (userDivisionGroup_(user) === "READONLY") throw new Error("Akun ini hanya memiliki akses baca.");
+  const inquiryNo = String(payload.inquiryNo || "").trim();
+  const submitted = payload.fields;
+  if (!inquiryNo || !submitted || typeof submitted !== "object" || Array.isArray(submitted)) {
+    throw new Error("Nomor inquiry dan field perubahan wajib disertakan.");
+  }
+  const allowed = editableFieldDefs_(user);
+  const defs = {};
+  allowed.forEach(def => defs[def.key] = def);
+  const keys = Object.keys(submitted);
+  if (!keys.length) throw new Error("Tidak ada perubahan yang dikirim.");
+  const unknown = keys.filter(key => !defs[key]);
+  if (unknown.length) throw new Error("Akses ditolak untuk field: " + unknown.join(", "));
+  const sheet = getSheet_(SA.INQUIRY_SHEET);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  let rowNumber, changes = [];
+  try {
+    rowNumber = findInquiryRow_(sheet, inquiryNo);
+    if (rowNumber < 0) throw new Error("Inquiry " + inquiryNo + " tidak ditemukan.");
+    keys.forEach(key => {
+      const def = defs[key];
+      const range = sheet.getRange(rowNumber, def.index + 1);
+      const oldValue = range.getDisplayValue();
+      const newValue = normalizeWriteValue_(def, submitted[key]);
+      const compareNew = newValue instanceof Date ? Utilities.formatDate(newValue, Session.getScriptTimeZone(), "yyyy-MM-dd") : String(newValue);
+      if (String(oldValue).trim() === String(compareNew).trim()) return;
+      range.setValue(newValue);
+      changes.push({key:key,label:def.label,oldValue:oldValue,newValue:compareNew});
+    });
+    SpreadsheetApp.flush();
+  } finally {
+    lock.releaseLock();
+  }
+  if (!changes.length) return {updated:false,message:"Tidak ada nilai yang berubah.",changedFields:[]};
+  const requestId = Utilities.getUuid();
+  changes.forEach(change => audit_("UPDATE_INQUIRY",user,change.key,inquiryNo,change.oldValue,change.newValue,{
+    inquiryProjectNo:inquiryNo,sheetName:SA.INQUIRY_SHEET,rowNumber:rowNumber,fieldKey:change.key,requestId:requestId,source:"WEB_APP"
+  }));
+  CacheService.getScriptCache().remove("SA_DASHBOARD_RECORDS_V1");
+  return {updated:true,inquiryNo:inquiryNo,rowNumber:rowNumber,changedFields:changes.map(c=>c.key),message:changes.length+" field berhasil diperbarui."};
+}
+
+function createInquiry_(payload) {
+  const user = requireSession_(payload.sessionToken);
+  const group = userDivisionGroup_(user);
+  if (group !== "ADMIN" && group !== "SALES") throw new Error("Hanya ADMIN dan Sales yang dapat membuat inquiry baru.");
+  const submitted = payload.fields;
+  if (!submitted || typeof submitted !== "object" || Array.isArray(submitted)) throw new Error("Data inquiry tidak valid.");
+  const allowed = editableFieldDefs_(user);
+  const defs = {};
+  allowed.forEach(def => defs[def.key] = def);
+  const inquiryNo = String(submitted["INQUIRY PROJECT NO"] || "").trim();
+  if (!inquiryNo) throw new Error("INQUIRY PROJECT NO wajib diisi.");
+  if (!String(submitted["CUSTOMER"] || "").trim()) throw new Error("CUSTOMER wajib diisi.");
+  if (!String(submitted["NAMA PROJECT INQUIRY"] || "").trim()) throw new Error("NAMA PROJECT INQUIRY wajib diisi.");
+  const keys = Object.keys(submitted);
+  const unknown = keys.filter(key => !defs[key] && key !== "INQUIRY PROJECT NO");
+  if (unknown.length) throw new Error("Akses ditolak untuk field: " + unknown.join(", "));
+  const sheet = getSheet_(SA.INQUIRY_SHEET);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  let rowNumber, values;
+  try {
+    if (findInquiryRow_(sheet,inquiryNo) >= 0) throw new Error("Nomor inquiry " + inquiryNo + " sudah digunakan.");
+    rowNumber = Math.max(sheet.getLastRow()+1,SA.INQUIRY_FIRST_ROW);
+    values = new Array(29).fill("");
+    const sequenceValues = rowNumber > SA.INQUIRY_FIRST_ROW
+      ? sheet.getRange(SA.INQUIRY_FIRST_ROW,1,rowNumber-SA.INQUIRY_FIRST_ROW,1).getValues().flat()
+      : [];
+    const maxSequence = sequenceValues.reduce((max,value)=>Math.max(max,Number(value)||0),0);
+    values[0] = maxSequence + 1;
+    values[4] = inquiryNo;
+    keys.forEach(key => {
+      if (key === "INQUIRY PROJECT NO") return;
+      const def = defs[key];
+      if (!def) return;
+      values[def.index] = normalizeWriteValue_(def,submitted[key]);
+    });
+    sheet.getRange(rowNumber,1,1,29).setValues([values]);
+    SpreadsheetApp.flush();
+  } finally {
+    lock.releaseLock();
+  }
+  const requestId = Utilities.getUuid();
+  audit_("CREATE_INQUIRY",user,"RECORD",inquiryNo,"","Inquiry dibuat dari website",{
+    inquiryProjectNo:inquiryNo,sheetName:SA.INQUIRY_SHEET,rowNumber:rowNumber,fieldKey:"RECORD",requestId:requestId,source:"WEB_APP"
+  });
+  CacheService.getScriptCache().remove("SA_DASHBOARD_RECORDS_V1");
+  return {created:true,inquiryNo:inquiryNo,rowNumber:rowNumber,message:"Inquiry "+inquiryNo+" berhasil dibuat."};
+}
+
 
 /** Returns only audit entries associated with the requested inquiry key. */
 function readInquiryHistory_(inquiryNo) {
