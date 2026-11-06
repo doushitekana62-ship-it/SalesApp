@@ -105,14 +105,14 @@
     return Object.entries(counts).sort((a,b)=>b[1]-a[1]);
   }
 
-  function renderBars(targetId, entries, limit=8) {
+  function renderBars(targetId, entries, limit=8, filterField="") {
     const target=$(targetId); target.innerHTML="";
     const list=entries.slice(0,limit);
     if(!list.length){target.textContent="Belum ada data.";target.className="bar-chart chart-empty";return;}
     target.className="bar-chart";
     const max=Math.max(1,...list.map(item=>item[1]));
     list.forEach(([label,value])=>{
-      const row=document.createElement("div");row.className="bar-row";
+      const row=document.createElement(filterField?"button":"div");if(filterField){row.type="button";row.className="bar-row chart-bar-button";row.addEventListener("click",()=>setChartFilter([{field:filterField,value:label==="Belum diisi"?"":label}],label));}else{row.className="bar-row";}
       const name=document.createElement("span");name.className="bar-label";name.textContent=label;
       const track=document.createElement("div");track.className="bar-track";
       const fill=document.createElement("span");fill.className="bar-fill";fill.style.width=Math.max(2,value/max*100)+"%";track.appendChild(fill);
@@ -133,7 +133,7 @@
     const totalNode=document.createElement("strong");totalNode.textContent=total.toLocaleString("id-ID");
     const caption=document.createElement("small");caption.textContent="Project";hole.append(totalNode,caption);wrap.appendChild(hole);
     const legend=document.createElement("div");legend.className="donut-legend";
-    entries.forEach(([label,value],index)=>{const row=document.createElement("div");row.className="legend-row";const dot=document.createElement("i");dot.style.background=palette[index%palette.length];const name=document.createElement("span");name.textContent=label;const amount=document.createElement("strong");amount.textContent=value+" · "+Math.round(value/total*100)+"%";row.append(dot,name,amount);legend.appendChild(row);});
+    entries.forEach(([label,value],index)=>{const row=document.createElement("button");row.type="button";row.className="legend-row chart-legend-button";row.addEventListener("click",()=>setChartFilter([{field:"projectStatus",value:label==="Belum diisi"?"":label}],label));const dot=document.createElement("i");dot.style.background=palette[index%palette.length];const name=document.createElement("span");name.textContent=label;const amount=document.createElement("strong");amount.textContent=value+" · "+Math.round(value/total*100)+"%";row.append(dot,name,amount);legend.appendChild(row);});
     target.className="donut-layout";target.append(wrap,legend);
   }
 
@@ -204,10 +204,10 @@
     if(guestMode){$("analyticsSection").hidden=true;$("deadlineSection").hidden=true;return;}
     $("analyticsSection").hidden=false;$("deadlineSection").hidden=false;
     renderPieChart("kindWorksChart",categoryEntries(r=>r.equipment),"equipment");
-    renderBars("inquiryRankChart",categoryEntries(r=>r.inquiryRank));
+    renderBars("inquiryRankChart",categoryEntries(r=>r.inquiryRank),8,"inquiryRank");
     renderStackedProjectRank();
     renderPieChart("requesterChart",categoryEntries(r=>r.department),"department");
-    renderBars("planningStatusChart",categoryEntries(r=>r.planningStatus));
+    renderBars("planningStatusChart",categoryEntries(r=>r.planningStatus),8,"planningStatus");
     renderDonut(categoryEntries(r=>r.projectStatus));
     renderPlanningQuotation();
     renderPieChart("customerSpecChart",categoryEntries(r=>r.customerSpec),"customerSpec");
