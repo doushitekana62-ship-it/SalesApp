@@ -243,27 +243,58 @@ function cell_(row, map, key) {
  * rows above the table, so do not assume a fixed row number.
  */
 function readInquiryTable_(sheet) {
-  const scanRows = Math.min(SA.INQUIRY_HEADER_SCAN_ROWS, sheet.getLastRow());
+  // Struktur workbook KAIZEN: header bertingkat pada baris 4-6, data mulai baris 7.
+  const headerStartRow = 4;
+  const headerEndRow = 6;
+  const dataStartRow = 7;
+  const lastRow = sheet.getLastRow();
   const lastCol = sheet.getLastColumn();
-  if (!scanRows || !lastCol) throw new Error("Sheet Inquiry sheet kosong.");
 
-  const candidates = sheet.getRange(1, 1, scanRows, lastCol).getDisplayValues();
-  for (let i = 0; i < candidates.length; i++) {
-    const normalized = candidates[i].map(normalizeHeader_);
-    if (normalized.includes("INQUIRY PROJECT NO") && normalized.includes("CUSTOMER")) {
-      const table = readTable_(sheet, i + 1);
-      table.headerRow = i + 1;
-      return table;
+  if (lastCol < 5 || lastRow < headerEndRow) {
+    throw new Error("Sheet Inquiry sheet tidak memiliki struktur header yang diharapkan.");
+  }
+
+  // Merged cells hanya menyimpan teks pada sel kiri-atas. Ambil label
+  // terakhir yang tidak kosong untuk setiap kolom di seluruh baris header.
+  const headerGrid = sheet.getRange(
+    headerStartRow, 1, headerEndRow - headerStartRow + 1, lastCol
+  ).getDisplayValues();
+
+  const headers = new Array(lastCol).fill("");
+  for (let col = 0; col < lastCol; col++) {
+    for (let row = 0; row < headerGrid.length; row++) {
+      const value = String(headerGrid[row][col] || "").replace(/\\s+/g, " ").trim();
+      if (value) headers[col] = value;
     }
   }
 
-  const inspected = candidates.map((row, i) =>
-    "row " + (i + 1) + ": " + row.map(normalizeHeader_).filter(Boolean).join(" | ")
-  ).filter(line => line.indexOf("INQUIRY") >= 0 || line.indexOf("CUSTOMER") >= 0);
+  const map = {};
+  headers.forEach((header, index) => {
+    const key = normalizeHeader_(header);
+    if (key) map[key] = index;
+  });
 
-  throw new Error("Header lengkap Inquiry sheet tidak ditemukan dalam " + scanRows +
-    " baris pertama. Dibutuhkan INQUIRY PROJECT NO dan CUSTOMER pada baris yang sama. " +
-    "Baris terkait: " + (inspected.join(" || ") || "tidak ada header terkait"));
+  const requiredHeaders = ["CUSTOMER", "INQUIRY PROJECT NO", "NAMA PROJECT INQUIRY", "JENIS EQUIPMENT"];
+  const missing = requiredHeaders.filter(name => map[name] === undefined);
+  if (missing.length) {
+    throw new Error(
+      "Header Inquiry sheet tidak cocok. Area header yang dibaca: baris " +
+      headerStartRow + "-" + headerEndRow + ". Kolom wajib tidak ditemukan: " +
+      missing.join(", ") + ". Header hasil pembacaan: " +
+      headers.map(normalizeHeader_).filter(Boolean).join(" | ")
+    );
+  }
+
+  const rows = lastRow >= dataStartRow
+    ? sheet.getRange(dataStartRow, 1, lastRow - dataStartRow + 1, lastCol).getValues()
+    : [];
+
+  return {
+    map: map,
+    rows: rows,
+    headerRow: headerStartRow + "-" + headerEndRow,
+    dataStartRow: dataStartRow
+  };
 }
 
 function readUsersTable_(sheet) {
