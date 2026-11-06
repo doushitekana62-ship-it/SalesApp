@@ -286,27 +286,74 @@ function dashboard_(payload) {
 }
 
 
-function audit_(action, user, field, recordKey, oldValue, newValue) {
+/**
+ * Append audit events using header names, never positional assumptions.
+ * Supports the current 15-column ACTIVITY_LOG schema and legacy header aliases.
+ */
+function audit_(action, user, field, recordKey, oldValue, newValue, details) {
   const sheet = getSheet_(SA.LOG_SHEET);
-  const headers = ["TIMESTAMP", "USER_ID", "FULL_NAME", "ROLE", "DIVISION", "ACTION", "FIELD", "RECORD_KEY", "OLD_VALUE", "NEW_VALUE"];
-  if (sheet.getLastRow() === 0) sheet.appendRow(headers);
-  sheet.appendRow([
-    new Date(),
-    user ? user.userId : "",
-    user ? user.fullName : "",
-    user ? user.role : "",
-    user ? user.division : "",
-    action,
-    field,
-    recordKey,
-    oldValue,
-    newValue
-  ]);
+  const lastColumn = sheet.getLastColumn();
+  if (lastColumn < 1) throw new Error("ACTIVITY_LOG belum memiliki header.");
+
+  const headerRow = 1;
+  const headers = sheet.getRange(headerRow, 1, 1, lastColumn).getDisplayValues()[0];
+  const map = {};
+  headers.forEach((header, index) => {
+    const key = normalizeHeader_(header);
+    if (key) map[key] = index;
+  });
+
+  const required = ["LOG_ID", "TIMESTAMP", "USER_ID", "USER_NAME", "ROLE", "DIVISION", "ACTION"];
+  const missing = required.filter(key => map[key] === undefined);
+  if (missing.length) {
+    throw new Error("Header ACTIVITY_LOG tidak lengkap: " + missing.join(", "));
+  }
+
+  const extra = details || {};
+  const values = new Array(lastColumn).fill("");
+  const eventId = Utilities.getUuid();
+  const requestId = String(extra.requestId || Utilities.getUuid());
+  const event = {
+    LOG_ID: eventId,
+    TIMESTAMP: new Date(),
+    USER_ID: user ? user.userId : "",
+    USER_NAME: user ? user.fullName : "",
+    ROLE: user ? user.role : "",
+    DIVISION: user ? user.division : "",
+    ACTION: String(action || ""),
+    INQUIRY_PROJECT_NO: String(extra.inquiryProjectNo || recordKey || ""),
+    SHEET_NAME: String(extra.sheetName || (
+      String(action).toUpperCase() === "LOGIN" || String(action).toUpperCase() === "LOGOUT"
+        ? "Authentication" : ""
+    )),
+    ROW_NUMBER: extra.rowNumber === undefined || extra.rowNumber === null ? "" : extra.rowNumber,
+    FIELD_KEY: String(extra.fieldKey || field || ""),
+    OLD_VALUE: oldValue === undefined || oldValue === null ? "" : String(oldValue),
+    NEW_VALUE: newValue === undefined || newValue === null ? "" : String(newValue),
+    REQUEST_ID: requestId,
+    SOURCE: String(extra.source || "WEB_APP")
+  };
+
+  const aliases = {
+    USER_NAME: ["USER_NAME", "FULL_NAME"],
+    INQUIRY_PROJECT_NO: ["INQUIRY_PROJECT_NO", "RECORD_KEY"],
+    FIELD_KEY: ["FIELD_KEY", "FIELD"]
+  };
+  Object.keys(event).forEach(key => {
+    const target = (aliases[key] || [key]).find(candidate => map[candidate] !== undefined);
+    if (target !== undefined) values[map[target]] = event[key];
+  });
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const nextRow = Math.max(sheet.getLastRow() + 1, headerRow + 1);
+    sheet.getRange(nextRow, 1, 1, lastColumn).setValues([values]);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
-/**
- * Constant-time string comparison for password hashes.
- */
 function safeEqual_(a, b) {
   a = String(a || "");
   b = String(b || "");
