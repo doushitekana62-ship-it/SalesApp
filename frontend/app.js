@@ -165,6 +165,7 @@
     if (!window.crypto || !window.crypto.subtle) {
       throw new Error("Browser tidak mendukung Web Crypto. Gunakan browser modern melalui HTTPS.");
     }
+    const deriveStarted = performance.now();
     const encoder = new TextEncoder();
     const passwordKey = await crypto.subtle.importKey(
       "raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]
@@ -184,7 +185,7 @@
     const toHex = (bytes) => Array.from(new Uint8Array(bytes))
       .map(byte => byte.toString(16).padStart(2, "0"))
       .join("");
-    return { derivedKey: toHex(derivedBits), proof: toHex(signature) };
+    return { derivedKey: toHex(derivedBits), proof: toHex(signature), deriveMs: Math.round(performance.now() - deriveStarted) };
   }
 
   $("loginForm").addEventListener("submit", async (event) => {
@@ -221,6 +222,7 @@
       lastLoginMs = Math.round(performance.now() - started);
       lastLoginDiagnostics = {
         challenge: challengeTimings,
+        deriveMs: credentials.deriveMs,
         verify: data.authTimings || {}
       };
       showApp(data.user);
