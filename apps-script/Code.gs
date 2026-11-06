@@ -244,6 +244,8 @@ function cell_(row, map, key) {
  * rows above the table, so do not assume a fixed row number.
  */
 function readInquiryTable_(sheet) {
+  // A7 = sequence number 1; E7 = inquiry project number (primary record key).
+  // Header rows 3-6 contain merged cells and are intentionally not parsed.
   const first = 7;
   const last = sheet.getLastRow();
   const map = {
