@@ -28,7 +28,7 @@ The application is not production-ready until Apps Script is deployed and direct
 2. Open **Extensions → Apps Script**. This must be the script project bound to that spreadsheet.
 3. Copy the files from `apps-script/` into the Apps Script editor, preserving filenames. Save.
 4. Deploy Apps Script as a Web App. Execute as the spreadsheet owner. The Web App must accept requests from anyone so the custom login can be used; spreadsheet users must not be granted direct spreadsheet access. All data actions must validate the app session and role.
-5. Paste the deployed `/exec` URL into `frontend/config.js` as `APPS_SCRIPT_URL`.
+5. Paste the deployed `/exec` URL into the root `config.js` as `APPS_SCRIPT_URL` (the root folder is the GitHub Pages source).
 6. Open `cors-test.html` from the published site and run the connectivity test. Do not proceed to production until the test passes in the browser console.
 7. Enable GitHub Pages using the repository root (`/`) because the published `index.html`, `app.js`, `style.css`, and `config.js` are in the root.
 8. Test with a non-production test account before creating real users.
