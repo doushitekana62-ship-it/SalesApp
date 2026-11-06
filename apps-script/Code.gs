@@ -438,6 +438,8 @@ function inquirySchema_(payload) {
 }
 
 function ensureMaintenanceColumn_(sheet) {
+  const maxColumns = sheet.getMaxColumns();
+  if (maxColumns < 30) sheet.insertColumnsAfter(maxColumns, 30 - maxColumns);
   const headerCell = sheet.getRange(6, 30);
   const current = normalizeHeader_(headerCell.getDisplayValue());
   if (!current) {
