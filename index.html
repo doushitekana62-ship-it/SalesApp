@@ -30,7 +30,7 @@
         <div class="brand"><span class="brand-mark">S</span><div><strong>SalesApp</strong><small>Inquiry Control Dashboard</small></div></div>
         <div class="user-area"><div><strong id="userName">—</strong><small id="userRole">—</small></div><button id="logoutBtn" class="secondary">Keluar</button></div>
       </header>
-      <div class="page-heading"><div><p class="eyebrow">OVERVIEW</p><h1>Inquiry monitoring</h1><p class="muted" id="scopeText">Ringkasan data inquiry lintas divisi.</p></div><button id="refreshBtn" class="secondary">Muat ulang</button></div>
+      <div class="page-heading"><div><p class="eyebrow">OVERVIEW</p><h1>Inquiry monitoring</h1><p class="muted" id="scopeText">Ringkasan data inquiry lintas divisi.</p></div><div class="page-actions"><button id="createInquiryBtn" class="primary compact" type="button" hidden>+ Tambah inquiry</button><button id="refreshBtn" class="secondary">Muat ulang</button></div></div>
       <div id="notice" class="notice" role="status">Menghubungkan ke server…</div>
       <section class="kpi-grid">
         <button type="button" class="kpi kpi-action" data-kpi="total" aria-pressed="false"><span>Total inquiry</span><strong id="totalInquiry">—</strong><small>Record dengan nomor inquiry</small></button>
@@ -51,13 +51,14 @@
       <section class="panel data-panel">
         <div class="panel-heading"><div><p class="eyebrow">DATA REGISTER</p><h2>Inquiry terbaru</h2></div><input id="searchInput" class="search" placeholder="Cari inquiry, customer, project…" aria-label="Cari inquiry"></div>
         <div class="table-wrap"><table><thead><tr><th>Inquiry No.</th><th>Customer</th><th>Project</th><th>Equipment</th><th>Planner</th><th>Sales PIC</th><th>Quotation</th><th>Project status</th></tr></thead><tbody id="inquiryRows"><tr><td colspan="8" class="empty">Data belum dimuat.</td></tr></tbody></table></div>
-        <p class="muted small">Tampilan awal bersifat monitoring. Pengeditan data belum diaktifkan sampai matriks hak akses dan kolom update tiap divisi tervalidasi.</p>
+        <p class="muted small">Pilih satu inquiry untuk melihat detail dan mengedit field sesuai hak akses divisi. Perubahan disimpan langsung ke Google Spreadsheet.</p>
       </section>
 
       <dialog id="detailDialog" class="detail-dialog" aria-labelledby="detailTitle">
-        <div class="detail-dialog-head"><div><p class="eyebrow">INQUIRY DETAIL</p><h2 id="detailTitle">Detail inquiry</h2><p id="detailSubtitle" class="muted"></p></div><button id="closeDetailBtn" class="secondary" type="button">Tutup</button></div>
+        <div class="detail-dialog-head"><div><p class="eyebrow">INQUIRY WORKSPACE</p><h2 id="detailTitle">Detail inquiry</h2><p id="detailSubtitle" class="muted"></p></div><div class="detail-head-actions"><button id="editDetailBtn" class="primary compact" type="button" hidden>Edit data</button><button id="closeDetailBtn" class="secondary" type="button">Tutup</button></div></div>
         <div id="detailLoading" class="detail-loading">Memuat detail inquiry…</div>
         <div id="detailContent" hidden>
+          <section id="detailEditorPanel" class="detail-section editor-panel" hidden><h3 id="editorHeading">Edit data inquiry</h3><p id="editorHelp" class="muted small">Hanya field yang diizinkan untuk akun ini yang dapat diubah.</p><form id="inquiryEditorForm"><div id="inquiryEditorFields" class="editor-grid"></div><div class="editor-actions"><button id="cancelEditBtn" class="secondary" type="button">Batal</button><button id="saveInquiryBtn" class="primary compact" type="submit">Simpan perubahan</button></div></form></section>
           <section class="detail-section"><h3>1. Customer dan nama project</h3><div id="detailIdentity" class="detail-grid"></div></section>
           <section class="detail-section"><h3>2. Equipment dan spesifikasi</h3><div id="detailEquipment" class="detail-grid"></div></section>
           <section class="detail-section"><h3>3. Requester dan department</h3><div id="detailRequester" class="detail-grid"></div></section>
@@ -72,6 +73,6 @@
     </section>
   </main>
   <script src="config.js"></script>
-  <script src="app.js?v=20261106-stage3"></script>
+  <script src="app.js?v=20261106-stage4"></script>
 </body>
 </html>
