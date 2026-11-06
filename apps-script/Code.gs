@@ -31,6 +31,7 @@ function doPost(e) {
     else if (action === "me") data = requireSession_(payload.sessionToken);
     else if (action === "logout") data = logout_(payload);
     else if (action === "dashboard") data = dashboard_(payload);
+    else if (action === "inquiryDetail") data = inquiryDetail_(payload);
     else throw new Error("Aksi tidak dikenal.");
     return json_({ ok: true, data: data, meta: { action: action, serverMs: Date.now() - started } });
   } catch (err) {
@@ -286,6 +287,64 @@ function dashboard_(payload) {
     };
   }
   return { guest: false, summary: null, records: records, diagnostics: diagnostics };
+}
+
+
+
+/** Authenticated read-only detail endpoint. Guest accounts cannot read records. */
+function inquiryDetail_(payload) {
+  const user = requireSession_(payload.sessionToken);
+  if (String(user.role).toUpperCase() === "GUEST") throw new Error("Akun Guest hanya dapat melihat ringkasan dashboard.");
+  const inquiryNo = String(payload.inquiryNo || "").trim();
+  if (!inquiryNo) throw new Error("Nomor inquiry wajib disertakan.");
+  const sheet = getSheet_(SA.INQUIRY_SHEET);
+  const table = readInquiryTable_(sheet);
+  const keyIndex = table.map["INQUIRY PROJECT NO"];
+  if (keyIndex === undefined) throw new Error("Kolom INQUIRY PROJECT NO tidak ditemukan.");
+  const index = table.rows.findIndex(row => String(row[keyIndex] || "").trim() === inquiryNo);
+  if (index < 0) throw new Error("Inquiry " + inquiryNo + " tidak ditemukan.");
+  const row = table.rows[index];
+  const value = key => cell_(row, table.map, key);
+  const record = {
+    rowNumber: SA.INQUIRY_FIRST_ROW + index,
+    inquiryNo:value("INQUIRY PROJECT NO"), customer:value("CUSTOMER"), project:value("NAMA PROJECT INQUIRY"),
+    equipment:value("JENIS EQUIPMENT"), requester:value("NAMA REQUESTER"), department:value("DEPARTMENT"),
+    customerTechnicalSpec:value("TECHNICAL SPEC. DARI CUSTOMER"), salesMomSpec:value("MOM / SPESIFIKASI DARI SALES"),
+    inquiryRank:value("INQUIRY RANK"), dueDate:value("DUE DATE DATA MASUK KE SALES"),
+    estimatedDeliveryTime:value("ESTIMASI DELIVERY TIME"), plannerInquiryDate:value("TGL INQUIRY MASUK KE PLANNER"),
+    planner:value("PLANNER PIC"), technicalSpec:value("TECHNICAL SPEC"), drawing:value("DRAWING"),
+    costTable:value("COST TABLE"), otherDocuments:value("LAIN-LAIN"),
+    actualDelivery:value("ACTUAL DATA DELIVERY KE SALES"), progress:value("PROGRESS (%)"),
+    planningJob:value("PLANING JOB"), dataDelivery:value("DATA DELIVERY"), salesPic:value("SALES PIC"),
+    quotationStatus:value("STATUS PENAWARAN"), quotationNo:value("NO PENAWARAN"),
+    releaseDate:value("TANGGAL RELEASE"), projectStatus:value("STATUS PROJECT"), note:value("NOTE")
+  };
+  return {record:record,history:readInquiryHistory_(inquiryNo),diagnostics:{sheetName:sheet.getName(),rowNumber:record.rowNumber}};
+}
+
+/** Returns only audit entries associated with the requested inquiry key. */
+function readInquiryHistory_(inquiryNo) {
+  const sheet=getSheet_(SA.LOG_SHEET), lastRow=sheet.getLastRow(), lastCol=sheet.getLastColumn();
+  if(lastRow<2||lastCol<1)return [];
+  const headers=sheet.getRange(1,1,1,lastCol).getDisplayValues()[0], map={};
+  headers.forEach((header,index)=>{const key=normalizeHeader_(header);if(key)map[key]=index;});
+  const keyCol=map.INQUIRY_PROJECT_NO!==undefined?map.INQUIRY_PROJECT_NO:map.RECORD_KEY;
+  if(keyCol===undefined)return [];
+  const rows=sheet.getRange(2,1,lastRow-1,lastCol).getValues();
+  return rows.map((row,index)=>({row:row,rowNumber:index+2}))
+    .filter(item=>String(item.row[keyCol]||"").trim()===inquiryNo)
+    .map(item=>{
+      const get=key=>map[key]===undefined?"":item.row[map[key]];
+      const timestamp=get("TIMESTAMP");
+      return {
+        logId:String(get("LOG_ID")||""),
+        timestamp:timestamp instanceof Date?Utilities.formatDate(timestamp,Session.getScriptTimeZone(),"yyyy-MM-dd HH:mm:ss"):String(timestamp||""),
+        userName:String(get("USER_NAME")||get("FULL_NAME")||""),userId:String(get("USER_ID")||""),
+        role:String(get("ROLE")||""),division:String(get("DIVISION")||""),action:String(get("ACTION")||""),
+        fieldKey:String(get("FIELD_KEY")||get("FIELD")||""),oldValue:String(get("OLD_VALUE")||""),
+        newValue:String(get("NEW_VALUE")||""),rowNumber:String(get("ROW_NUMBER")||""),source:String(get("SOURCE")||"")
+      };
+    }).sort((a,b)=>b.timestamp.localeCompare(a.timestamp)).slice(0,100);
 }
 
 
