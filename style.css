@@ -27,3 +27,23 @@
 .editor-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid #edf0f4}
 .detail-dialog .editor-panel{background:#fbfcfe;border:1px solid #e6ebf2;border-radius:12px;padding:18px;margin:18px 0}
 @media(max-width:700px){.editor-grid{grid-template-columns:1fr}.editor-field.full-width{grid-column:auto}.page-actions{flex-wrap:wrap;justify-content:flex-end}.detail-dialog-head{top:-16px}}
+
+
+/* Stage 5 — polished inquiry editor and detail workspace */
+.detail-dialog{width:min(1120px,calc(100vw - 32px));padding:26px;overflow:auto;background:#fff}
+.detail-dialog-head{align-items:center;gap:20px}
+.detail-head-actions{flex-shrink:0}
+.detail-section h3{font-size:15px;letter-spacing:-.15px}
+.detail-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.detail-field{padding:13px 14px;min-height:62px}
+.detail-field strong{font-size:13px;line-height:1.55}
+.editor-panel{scroll-margin-top:18px}
+.editor-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 18px}
+.editor-field input,.editor-field textarea,.editor-field select{min-height:42px;background:#fff}
+.editor-field textarea{min-height:94px;line-height:1.5}
+.editor-field input[type=date]{min-height:42px}
+.editor-field input[type=number]{font-variant-numeric:tabular-nums}
+.editor-field input:disabled,.editor-field textarea:disabled,.editor-field select:disabled{background:#f2f4f7;color:#667085}
+.editor-actions{position:sticky;bottom:-18px;background:#fbfcfe;padding:14px 0 2px}
+@media(max-width:760px){.detail-dialog{width:calc(100vw - 20px);padding:16px}.detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.detail-dialog-head{align-items:flex-start;flex-direction:column}.detail-head-actions{width:100%;justify-content:flex-end}.editor-grid{grid-template-columns:1fr}}
+@media(max-width:440px){.detail-grid{grid-template-columns:1fr}.detail-dialog{max-height:94vh}}
