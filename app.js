@@ -193,6 +193,7 @@
       detailPeople:[["Planner PIC",record.planner],["Tanggal inquiry masuk ke Planner",record.plannerInquiryDate],["Sales PIC",record.salesPic]],
       detailDocuments:[["Technical spec",record.technicalSpec],["Drawing",record.drawing],["Cost table",record.costTable],["Lain-lain",record.otherDocuments]],
       detailProgress:[["Due date data masuk ke Sales",record.dueDate],["Estimasi delivery time",record.estimatedDeliveryTime],["Actual data delivery ke Sales",record.actualDelivery],["Progress (%)",record.progress],["Planing job",record.planningJob],["Data delivery",record.dataDelivery]],
+      detailMaintenance:[["Maintenance update",record.maintenanceUpdate]],
       detailCommercial:[["Status penawaran",record.quotationStatus],["Nomor quotation",record.quotationNo],["Tanggal release",record.releaseDate],["Status project",record.projectStatus]],
       detailNotes:[["Note",record.note]]
     };
@@ -311,7 +312,7 @@
       const schema = await api("inquirySchema");
       const fields = [{key:"INQUIRY PROJECT NO",label:"Nomor inquiry / Inquiry Project No",type:"text",required:true},...schema.fields];
       showEditor(fields,"create");
-      ["detailIdentity","detailEquipment","detailRequester","detailPeople","detailDocuments","detailProgress","detailCommercial","detailNotes"].forEach(id=>$(id).innerHTML="");
+      ["detailIdentity","detailEquipment","detailRequester","detailPeople","detailDocuments","detailProgress","detailMaintenance","detailCommercial","detailNotes"].forEach(id=>$(id).innerHTML="");
       $("detailContent").querySelectorAll(".detail-section:not(.editor-panel)").forEach(section=>section.hidden=true);
     } catch (error) {
       $("detailError").textContent = error.message;
