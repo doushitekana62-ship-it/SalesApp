@@ -243,6 +243,9 @@ function dashboard_(payload) {
     const validRows = table.rows.filter(row => String(row[keyIndex] || "").trim());
     const records = validRows.map(row => ({
       inquiryNo: cell_(row, table.map, "INQUIRY PROJECT NO"),
+      inquiryRank: cell_(row, table.map, "INQUIRY RANK"),
+      dueDate: cell_(row, table.map, "DUE DATE DATA MASUK KE SALES"),
+      actualDelivery: cell_(row, table.map, "ACTUAL DATA DELIVERY KE SALES"),
       customer: cell_(row, table.map, "CUSTOMER"),
       project: cell_(row, table.map, "NAMA PROJECT INQUIRY"),
       equipment: cell_(row, table.map, "JENIS EQUIPMENT"),
