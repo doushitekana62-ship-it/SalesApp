@@ -186,7 +186,10 @@ function passwordVerifier_(derivedKeyHex) {
 
 function hexToBytes_(hex) {
   const bytes = [];
-  for (let i = 0; i < hex.length; i += 2) bytes.push(parseInt(hex.substr(i, 2), 16));
+  for (let i = 0; i < hex.length; i += 2) {
+    const value = parseInt(hex.substr(i, 2), 16);
+    bytes.push(value > 127 ? value - 256 : value);
+  }
   return bytes;
 }
 
