@@ -1063,8 +1063,10 @@ function employeeDashboard_(payload) {
   const ownActivity=employeeTable_("activity"), ownAttendance=employeeTable_("attendance");
   const activities=ownActivity.rows.filter(r=>String(r[ownActivity.map.USER_ID])===user.userId).slice(-50).reverse().map(r=>employeeRowObject_(r,ownActivity.map));
   const attendance=ownAttendance.rows.filter(r=>String(r[ownAttendance.map.USER_ID])===user.userId).slice(-30).reverse().map(r=>employeeRowObject_(r,ownAttendance.map));
+  const at=employeeTable_("assignments");
+  const assignments=at.rows.filter(r=>String(r[at.map.USER_ID])===user.userId).slice(-50).reverse().map(r=>employeeRowObject_(r,at.map));
   const canAssign=isAdmin||/DIVISION_HEAD|HEAD_OF_DIVISION|KEPALA_DIVISI/.test(String(user.role).toUpperCase());
-  return {directory:team,activities:activities,attendance:attendance,canAssign:canAssign,
+  return {directory:team,activities:activities,attendance:attendance,assignments:assignments,canAssign:canAssign,
     vehiclePlates:Array.from(new Set(dir.map(e=>e.defaultPlate).filter(Boolean)))};
 }
 function employeeRowObject_(r,m) {
