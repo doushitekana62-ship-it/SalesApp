@@ -990,11 +990,18 @@ function onEdit(e) {
     const sh=e.range.getSheet();
     if(sh.getName()!==SA.USERS_SHEET||e.range.getNumRows()!==1||e.range.getNumColumns()!==1) return;
     const table=readUsersTable_(sh), activeCol=table.map.ACTIVE+1;
-    if(e.range.getColumn()!==activeCol||e.range.getRow()<=table.headerRow) return;
+    if(e.range.getRow()<=table.headerRow) return;
+    const editedKey=Object.keys(table.map).find(k=>table.map[k]+1===e.range.getColumn());
+    if(!["ACTIVE","ROLE","DIVISION"].includes(editedKey)) return;
     CacheService.getScriptCache().remove("SA_USERS_TABLE_V1");
-    const nowActive=isActive_(e.range.getValue());
+    const nowActive=isActive_(sh.getRange(e.range.getRow(),activeCol).getValue());
     const rowValues=sh.getRange(e.range.getRow(),1,1,sh.getLastColumn()).getValues()[0];
     const user={userId:"SYSTEM",fullName:"Spreadsheet Admin",role:"SYSTEM",division:""};
+    if(editedKey==="ROLE"||editedKey==="DIVISION") {
+      audit_("USER_"+editedKey+"_UPDATED",user,editedKey,String(rowValues[table.map.USER_ID]||""),String(e.oldValue||""),String(e.value||""),{sheetName:SA.USERS_SHEET,rowNumber:e.range.getRow(),fieldKey:editedKey,source:"SHEET_EDIT"});
+      if(nowActive) syncEmployeeMasterFromUserRow_(rowValues,table.map);
+      return;
+    }
     if(nowActive) {
       syncEmployeeMasterFromUserRow_(rowValues,table.map);
       audit_("USER_ACTIVATED",user,"ACTIVE",String(rowValues[table.map.USER_ID]||""),String(e.oldValue||"FALSE"),"TRUE",{
@@ -1021,7 +1028,8 @@ function syncEmployeeMasterFromUserRow_(row,m) {
   target[em.USER_ID]=id; target[em.EMPLOYEE_NAME]=row[m.FULL_NAME]; target[em.EMAIL]=row[m.EMAIL];
   target[em.DIVISION]=row[m.DIVISION]; target[em.ROLE]=row[m.ROLE]; target[em.ACTIVE]=true;
   const rowNo=index<0?Math.max(2,sh.getLastRow()+1):index+2;
-  sh.getRange(rowNo,1,1,target.length).setValues([target]);
+  if(index<0 || ["USER_ID","EMPLOYEE_NAME","EMAIL","DIVISION","ROLE","ACTIVE"].some(k=>String(values[index][em[k]]??"")!==String(target[em[k]]??"")))
+    sh.getRange(rowNo,1,1,target.length).setValues([target]);
 }
 function removeOrDeactivateEmployeeMaster_(userId) {
   const sh=getSheet_("EMPLOYEE_MASTER"), t=readTable_(sh,1), c=t.map;
@@ -1097,13 +1105,17 @@ function employeeSaveActivity_(payload) {
 function employeeAuditChanges_(user,sheetName,rowNo,oldRow,newRow,map) {
   Object.keys(map).forEach(k=>{const a=oldRow[map[k]],b=newRow[map[k]];const av=a instanceof Date?a.toISOString():String(a==null?"":a),bv=b instanceof Date?b.toISOString():String(b==null?"":b);if(av!==bv)audit_("EMPLOYEE_RECORD_UPDATE",user,k,String(newRow[map.ACTIVITY_ID]||newRow[map.VISIT_ID]||""),av,bv,{sheetName:sheetName,rowNumber:rowNo,fieldKey:k});});
 }
+function employeeDateKey_(value) {
+  if(value instanceof Date) return Utilities.formatDate(value,Session.getScriptTimeZone(),"yyyy-MM-dd");
+  return String(value||"").trim().slice(0,10);
+}
 function employeeSaveAttendance_(payload) {
   const user=requireSession_(payload.sessionToken),t=employeeTable_("attendance"),d=payload.data||{};
   const date=String(d.ATTENDANCE_DATE||"").trim(),status=String(d.PRESENCE_STATUS||"").toUpperCase();
   if(!date||!["OFFICE","EXTERNAL_VISIT","LEAVE","SICK","OFF"].includes(status))throw new Error("Tanggal atau status kehadiran tidak valid.");
   const lock=LockService.getScriptLock();lock.waitLock(10000);
   try{
-    const i=t.rows.findIndex(r=>String(r[t.map.USER_ID])===user.userId&&String(r[t.map.ATTENDANCE_DATE])===date);
+    const i=t.rows.findIndex(r=>String(r[t.map.USER_ID])===user.userId&&employeeDateKey_(r[t.map.ATTENDANCE_DATE])===date);
     const values=i>=0?t.rows[i].slice():new Array(t.sheet.getLastColumn()).fill("");
     const set=(k,v)=>values[t.map[k]]=v;
     set("ATTENDANCE_ID",i>=0?values[t.map.ATTENDANCE_ID]:Utilities.getUuid());set("ATTENDANCE_DATE",new Date(date+"T12:00:00"));
