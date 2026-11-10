@@ -53,6 +53,11 @@
   $("employeeViewBtn")?.addEventListener("click",()=>{setEmployeeMode(true);loadEmployees();});
   $("backDashboardBtn")?.addEventListener("click",()=>setEmployeeMode(false));
   $("employeeRefreshBtn")?.addEventListener("click",loadEmployees);
+  function renderActivityRows(rows){
+    const target=$("employeeActivityRows");target.innerHTML="";
+    if(!rows.length){target.innerHTML='<tr><td colspan="6" class="empty">Belum ada data.</td></tr>';return;}
+    rows.forEach(row=>{const tr=document.createElement("tr");["ACTIVITY_DATE","ACTIVITY_TYPE","PROJECT_NAME","ACTIVITY_DESCRIPTION","ACTIVITY_STATUS"].forEach(k=>{const td=document.createElement("td");td.textContent=row[k]??"";tr.append(td);});const td=document.createElement("td"),btn=document.createElement("button");btn.type="button";btn.className="secondary";btn.textContent="Edit";btn.addEventListener("click",()=>{const form=$("employeeActivityForm");Object.keys(row).forEach(k=>{if(form.elements[k])form.elements[k].value=row[k]??"";});$("employeeActivityHeading").textContent="Edit aktivitas harian";form.scrollIntoView({behavior:"smooth",block:"center"});});td.append(btn);tr.append(td);});
+  }
   function fillTable(target,rows,columns){
     target.innerHTML="";
     if(!rows.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=columns.length;td.className="empty";td.textContent="Belum ada data.";tr.append(td);target.append(tr);return;}
@@ -62,7 +67,7 @@
     const notice=$("employeeNotice");notice.textContent="Memuat data…";
     try{
       employeeData=await request("employeeDashboard");notice.textContent=employeeData.directory.length+" karyawan aktif dalam cakupan akses.";
-      fillTable($("employeeActivityRows"),employeeData.activities,["ACTIVITY_DATE","ACTIVITY_TYPE","PROJECT_NAME","ACTIVITY_DESCRIPTION","ACTIVITY_STATUS"]);
+      renderActivityRows(employeeData.activities);
       const hist=await request("employeeHistory");fillTable($("employeeHistoryRows"),hist.items,["TIMESTAMP","ACTION","FIELD_KEY","OLD_VALUE","NEW_VALUE"]);
       const dl=$("employeePlateList");dl.innerHTML="";employeeData.vehiclePlates.forEach(p=>{const o=document.createElement("option");o.value=p;dl.append(o);});
       const assign=$("employeeAssignForm");assign.hidden=!employeeData.canAssign;
@@ -74,7 +79,7 @@
   }
   async function submitEmployeeForm(form,action,wrap=true){
     const button=form.querySelector('[type="submit"]');button.disabled=true;
-    try{const data=formData(form);await request(action,wrap?{data}:{...data});form.reset();setDefaultDates();$("employeeNotice").textContent="Data berhasil disimpan.";await loadEmployees();}
+    try{const data=formData(form);await request(action,wrap?{data}:{...data});form.reset();if(form.id==="employeeActivityForm")$("employeeActivityHeading").textContent="Aktivitas harian";setDefaultDates();$("employeeNotice").textContent="Data berhasil disimpan.";await loadEmployees();}
     catch(err){$("employeeNotice").textContent=err.message;}finally{button.disabled=false;}
   }
   $("employeeActivityForm")?.addEventListener("submit",e=>{e.preventDefault();submitEmployeeForm(e.currentTarget,"employeeSaveActivity");});
