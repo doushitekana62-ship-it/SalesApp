@@ -54,6 +54,11 @@
   $("employeeViewBtn")?.addEventListener("click",()=>{setEmployeeMode(true);loadEmployees();});
   $("backDashboardBtn")?.addEventListener("click",()=>setEmployeeMode(false));
   $("employeeRefreshBtn")?.addEventListener("click",loadEmployees);
+  function renderAssignments(rows){
+    const target=$("employeeAssignmentRows");target.innerHTML="";
+    if(!rows.length){target.innerHTML='<tr><td colspan="6" class="empty">Belum ada penugasan.</td></tr>';return;}
+    rows.forEach(r=>{const tr=document.createElement("tr");["PROJECT_NAME","INQUIRY_PROJECT_NO","START_DATE","TARGET_END_DATE","ASSIGNMENT_STATUS"].forEach(k=>{const td=document.createElement("td");td.textContent=r[k]??"";tr.append(td);});const td=document.createElement("td"),select=document.createElement("select");["ASSIGNED","IN_PROGRESS","ON_HOLD","COMPLETED"].forEach(s=>{const o=document.createElement("option");o.value=s;o.textContent=s;o.selected=s===r.ASSIGNMENT_STATUS;select.append(o);});const btn=document.createElement("button");btn.type="button";btn.className="secondary";btn.textContent="Update";btn.addEventListener("click",async()=>{try{await request("employeeUpdateAssignment",{assignmentId:r.ASSIGNMENT_ID,status:select.value,note:r.COMPLETION_NOTE||""});await loadEmployees();}catch(err){$("employeeNotice").textContent=err.message;}});td.append(select,btn);tr.append(td);target.append(tr);});
+  }
   function renderActivityRows(rows){
     const target=$("employeeActivityRows");target.innerHTML="";
     if(!rows.length){target.innerHTML='<tr><td colspan="6" class="empty">Belum ada data.</td></tr>';return;}
@@ -69,6 +74,9 @@
     try{
       employeeData=await request("employeeDashboard");notice.textContent=employeeData.directory.length+" karyawan aktif dalam cakupan akses.";
       renderActivityRows(employeeData.activities);
+      fillTable($("employeeDirectoryRows"),employeeData.directory,["name","email","division","role"]);
+      fillTable($("employeeAttendanceRows"),employeeData.attendance,["ATTENDANCE_DATE","PRESENCE_STATUS","NOTE"]);
+      renderAssignments(employeeData.assignments||[]);
       const hist=await request("employeeHistory");fillTable($("employeeHistoryRows"),hist.items,["TIMESTAMP","ACTION","FIELD_KEY","OLD_VALUE","NEW_VALUE"]);
       const dl=$("employeePlateList");dl.innerHTML="";employeeData.vehiclePlates.forEach(p=>{const o=document.createElement("option");o.value=p;dl.append(o);});
       const assign=$("employeeAssignForm");assign.hidden=!employeeData.canAssign;
