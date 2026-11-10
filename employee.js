@@ -5,6 +5,7 @@
   let sessionToken=sessionStorage.getItem("salesapp_session")||"";
   let employeeData=null;
   const request=async(action,payload={})=>{
+    sessionToken=sessionStorage.getItem("salesapp_session")||"";
     const response=await fetch(API,{method:"POST",mode:"cors",redirect:"follow",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action,sessionToken,...payload})});
     const result=await response.json();if(!result.ok)throw new Error(result.error||"Permintaan gagal.");return result.data;
   };
@@ -83,7 +84,5 @@
   setDefaultDates();
   // Keep session token synchronized after the existing login/logout code changes sessionStorage.
   $("employeeViewBtn")?.addEventListener("click",()=>{sessionToken=sessionStorage.getItem("salesapp_session")||"";});
-  const originalFetch=window.fetch;
-  // no global interception: employee requests always read the current session token.
-  if(!API)$("registerMessage")&&($("registerMessage").textContent="API belum dikonfigurasi.");
+  if(!API&&$("registerMessage"))$("registerMessage").textContent="API belum dikonfigurasi.";
 })();
