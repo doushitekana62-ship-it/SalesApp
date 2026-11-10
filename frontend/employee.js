@@ -42,6 +42,7 @@
   });
   const dashboardIds=["analyticsSection","deadlineSection","totalInquiry","inquiryRows"];
   function setEmployeeMode(enabled){
+    if(enabled)$("createInquiryBtn").dataset.allowed=String(!$("createInquiryBtn").hidden);
     $("employeeManagementView").hidden=!enabled;$("backDashboardBtn").hidden=!enabled;$("employeeViewBtn").hidden=enabled;
     ["analyticsSection","deadlineSection"].forEach(id=>{if($(id))$(id).hidden=enabled;});
     document.querySelector(".kpi-grid").hidden=enabled;
