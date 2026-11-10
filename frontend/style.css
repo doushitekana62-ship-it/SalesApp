@@ -78,3 +78,15 @@
 .performance-panel{grid-column:1/-1}
 @media(max-width:1050px){.analytics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.analytics-intro{grid-column:1/-1}}
 @media(max-width:650px){.analytics-grid{grid-template-columns:1fr}.analytics-intro{grid-column:1}.pie-layout{justify-content:flex-start;gap:14px}.pie-chart{width:125px;height:125px;min-width:125px}.performance-columns{grid-template-columns:1fr}.column-chart{gap:24px}}
+
+/* Registration and employee management */
+.employee-forms{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:18px 0 24px}
+.employee-form{padding:18px;display:grid;gap:9px;align-content:start}
+.employee-form h3{margin:0 0 6px;font-size:14px}
+.employee-form label{margin:0;display:grid;gap:6px;color:#52627a;font-size:11px}
+.employee-form input,.employee-form textarea,.employee-form select{width:100%;border:1px solid #dce2ea;border-radius:8px;padding:10px;font:inherit;font-size:12px;background:#fff}
+.employee-form textarea{min-height:62px;resize:vertical}
+.employee-form .primary{margin-top:6px}
+#employeeManagementView h3{font-size:14px;margin:22px 0 12px}
+#showRegisterBtn,#showRegistrationStatusBtn{margin:4px}
+@media(max-width:760px){.employee-forms{grid-template-columns:1fr}}
