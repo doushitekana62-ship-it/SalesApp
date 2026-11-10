@@ -1070,7 +1070,7 @@ function employeeDirectory_() {
   }));
 }
 function employeeDashboard_(payload) {
-  const user=requireSession_(payload.sessionToken); assertEmployeeAccess_(user); assertEmployeeAccess_(user); const  dir=employeeDirectory_(), isAdmin=String(user.role).toUpperCase()==="ADMIN";
+  const user=requireSession_(payload.sessionToken); assertEmployeeAccess_(user); const dir=employeeDirectory_(), isAdmin=String(user.role).toUpperCase()==="ADMIN";
   const team=dir.filter(e=>isAdmin||e.division.toUpperCase()===String(user.division).toUpperCase());
   const ownActivity=employeeTable_("activity"), ownAttendance=employeeTable_("attendance");
   const activities=ownActivity.rows.filter(r=>String(r[ownActivity.map.USER_ID])===user.userId).slice(-50).reverse().map(r=>employeeRowObject_(r,ownActivity.map));
@@ -1085,7 +1085,7 @@ function employeeRowObject_(r,m) {
   const o={};Object.keys(m).forEach(k=>{const v=r[m[k]];o[k]=v instanceof Date?Utilities.formatDate(v,Session.getScriptTimeZone(),"yyyy-MM-dd"):v;});return o;
 }
 function employeeSaveActivity_(payload) {
-  const user=requireSession_(payload.sessionToken); assertEmployeeAccess_(user); assertEmployeeAccess_(user); const  t=employeeTable_("activity"), data=payload.data||{}, id=String(data.ACTIVITY_ID||"");
+  const user=requireSession_(payload.sessionToken); assertEmployeeAccess_(user); const t=employeeTable_("activity"), data=payload.data||{}, id=String(data.ACTIVITY_ID||"");
   const lock=LockService.getScriptLock();lock.waitLock(10000);
   try {
     let rowNo=-1,old=null;
@@ -1114,7 +1114,7 @@ function employeeDateKey_(value) {
   return String(value||"").trim().slice(0,10);
 }
 function employeeSaveAttendance_(payload) {
-  const user=requireSession_(payload.sessionToken); assertEmployeeAccess_(user); assertEmployeeAccess_(user); const t=employeeTable_("attendance"),d=payload.data||{};
+  const user=requireSession_(payload.sessionToken); assertEmployeeAccess_(user); const t=employeeTable_("attendance"),d=payload.data||{};
   const date=String(d.ATTENDANCE_DATE||"").trim(),status=String(d.PRESENCE_STATUS||"").toUpperCase();
   if(!date||!["OFFICE","EXTERNAL_VISIT","LEAVE","SICK","OFF"].includes(status))throw new Error("Tanggal atau status kehadiran tidak valid.");
   const lock=LockService.getScriptLock();lock.waitLock(10000);
@@ -1130,7 +1130,7 @@ function employeeSaveAttendance_(payload) {
   }finally{lock.releaseLock();}
 }
 function employeeSaveVisit_(payload) {
-  const user=requireSession_(payload.sessionToken); assertEmployeeAccess_(user); assertEmployeeAccess_(user); const t=employeeTable_("visits"),d=payload.data||{};
+  const user=requireSession_(payload.sessionToken); assertEmployeeAccess_(user); const t=employeeTable_("visits"),d=payload.data||{};
   const date=String(d.VISIT_DATE||"").trim();if(!date||!String(d.CUSTOMER||"").trim())throw new Error("Tanggal dan customer wajib diisi.");
   const values=new Array(t.sheet.getLastColumn()).fill(""),id=Utilities.getUuid(),now=new Date();
   const set=(k,v)=>values[t.map[k]]=v;
@@ -1142,7 +1142,7 @@ function employeeSaveVisit_(payload) {
   return {saved:true,id:id};
 }
 function employeeAssign_(payload) {
-  const user=requireSession_(payload.sessionToken); assertEmployeeAccess_(user); assertEmployeeAccess_(user); const admin=String(user.role).toUpperCase()==="ADMIN";
+  const user=requireSession_(payload.sessionToken); assertEmployeeAccess_(user); const admin=String(user.role).toUpperCase()==="ADMIN";
   const head=/DIVISION_HEAD|HEAD_OF_DIVISION|KEPALA_DIVISI/.test(String(user.role).toUpperCase());
   if(!admin&&!head)throw new Error("Hanya Admin atau Kepala Divisi yang dapat memberikan penugasan.");
   const d=payload.data||{},targetId=String(d.USER_ID||"");
@@ -1159,7 +1159,7 @@ function employeeAssign_(payload) {
   return {assigned:true,id:id};
 }
 function employeeUpdateAssignment_(payload) {
-  const user=requireSession_(payload.sessionToken); assertEmployeeAccess_(user); assertEmployeeAccess_(user); const t=employeeTable_("assignments"),id=String(payload.assignmentId||""),status=String(payload.status||"").toUpperCase();
+  const user=requireSession_(payload.sessionToken); assertEmployeeAccess_(user); const t=employeeTable_("assignments"),id=String(payload.assignmentId||""),status=String(payload.status||"").toUpperCase();
   if(!["ASSIGNED","IN_PROGRESS","ON_HOLD","COMPLETED","CANCELLED"].includes(status))throw new Error("Status penugasan tidak valid.");
   const i=t.rows.findIndex(r=>String(r[t.map.ASSIGNMENT_ID])===id);if(i<0)throw new Error("Penugasan tidak ditemukan.");
   const old=t.rows[i],isOwner=String(old[t.map.USER_ID])===user.userId;
@@ -1171,7 +1171,7 @@ function employeeUpdateAssignment_(payload) {
   employeeAuditChanges_(user,t.name,rowNo,old,values,t.map);return {updated:true};
 }
 function employeeHistory_(payload) {
-  const user=requireSession_(payload.sessionToken); assertEmployeeAccess_(user); assertEmployeeAccess_(user); const isAdmin=String(user.role).toUpperCase()==="ADMIN";
+  const user=requireSession_(payload.sessionToken); assertEmployeeAccess_(user); const isAdmin=String(user.role).toUpperCase()==="ADMIN";
   const targetId=String(payload.userId||user.userId);
   if(targetId!==user.userId&&!isAdmin)throw new Error("Riwayat hanya dapat dilihat oleh pemilik atau Admin.");
   const sh=getSheet_(SA.LOG_SHEET),h=activityLogHeader_(sh),m=h.map,last=sh.getLastRow();
@@ -1181,7 +1181,7 @@ function employeeHistory_(payload) {
   return {items:items};
 }
 function employeeVehicleSuggestions_(payload) {
-  const user=requireSession_(payload.sessionToken); assertEmployeeAccess_(user); assertEmployeeAccess_(user); const dir=employeeDirectory_();
+  const user=requireSession_(payload.sessionToken); assertEmployeeAccess_(user); const dir=employeeDirectory_();
   const plates=Array.from(new Set(dir.map(e=>e.defaultPlate).filter(Boolean)));
   return {plates:plates};
 }
