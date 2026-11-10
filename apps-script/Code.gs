@@ -26,6 +26,9 @@ function doPost(e) {
     action = String(payload.action || "");
     let data;
     if (action === "ping") data = { service: "SalesApp API", status: "online", timestamp: new Date().toISOString() };
+    else if (action === "registerChallenge") data = registerChallenge_(payload);
+    else if (action === "registerComplete") data = registerComplete_(payload);
+    else if (action === "registrationStatus") data = registrationStatus_(payload);
     else if (action === "loginChallenge") data = beginLogin_(payload);
     else if (action === "loginVerify") data = completeLogin_(payload);
     else if (action === "me") data = requireSession_(payload.sessionToken);
@@ -35,6 +38,14 @@ function doPost(e) {
     else if (action === "inquirySchema") data = inquirySchema_(payload);
     else if (action === "updateInquiry") data = updateInquiry_(payload);
     else if (action === "createInquiry") data = createInquiry_(payload);
+    else if (action === "employeeDashboard") data = employeeDashboard_(payload);
+    else if (action === "employeeSaveActivity") data = employeeSaveActivity_(payload);
+    else if (action === "employeeSaveAttendance") data = employeeSaveAttendance_(payload);
+    else if (action === "employeeSaveVisit") data = employeeSaveVisit_(payload);
+    else if (action === "employeeAssign") data = employeeAssign_(payload);
+    else if (action === "employeeUpdateAssignment") data = employeeUpdateAssignment_(payload);
+    else if (action === "employeeHistory") data = employeeHistory_(payload);
+    else if (action === "employeeVehicleSuggestions") data = employeeVehicleSuggestions_(payload);
     else throw new Error("Aksi tidak dikenal.");
     return json_({ ok: true, data: data, meta: { action: action, serverMs: Date.now() - started } });
   } catch (err) {
@@ -890,4 +901,265 @@ function getSheet_(name) {
 }
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+
+/* ==================== REGISTRATION & EMPLOYEE MANAGEMENT ==================== */
+/* Existing workbook columns only. USERS.ROLE and USERS.DIVISION hold the
+   requested values while ACTIVE=FALSE; these values grant no access until active. */
+
+function registrationSheetTable_() {
+  const sheet=getSheet_(SA.USERS_SHEET), table=readUsersTable_(sheet);
+  ["USER_ID","FULL_NAME","EMAIL","ROLE","DIVISION","ACTIVE","PASSWORD_SALT","PASSWORD_HASH","CREATED_AT"].forEach(k=>{
+    if(table.map[k]===undefined) throw new Error("Kolom USERS tidak ditemukan: "+k);
+  });
+  return {sheet:sheet,table:table};
+}
+function registerChallenge_(payload) {
+  const email=String(payload.email||"").trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Format email tidak valid.");
+  const salt=Utilities.getUuid().replace(/-/g,"")+Utilities.getUuid().replace(/-/g,"");
+  const id=Utilities.getUuid()+Utilities.getUuid();
+  CacheService.getScriptCache().put("SA_REGISTER_"+id,JSON.stringify({email:email,salt:salt}),300);
+  return {challengeId:id,salt:salt,iterations:120000};
+}
+function registerComplete_(payload) {
+  const challengeId=String(payload.challengeId||""), derivedKey=String(payload.derivedKey||"").toLowerCase();
+  const fullName=String(payload.fullName||"").trim(), email=String(payload.email||"").trim().toLowerCase();
+  const requestedRole=String(payload.role||"").trim().toUpperCase();
+  const requestedDivision=String(payload.division||"").trim().toUpperCase();
+  if(!challengeId||!/^[a-f0-9]{64}$/.test(derivedKey)) throw new Error("Data registrasi tidak valid.");
+  if(fullName.length<3||fullName.length>120) throw new Error("Nama harus 3–120 karakter.");
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Format email tidak valid.");
+  if(!requestedRole||!requestedDivision) throw new Error("Role dan divisi wajib dipilih.");
+  const lock=LockService.getScriptLock(); lock.waitLock(15000);
+  try {
+    const cache=CacheService.getScriptCache(), key="SA_REGISTER_"+challengeId, raw=cache.get(key);
+    if(!raw) throw new Error("Sesi registrasi kedaluwarsa. Ulangi pendaftaran.");
+    const challenge=JSON.parse(raw);
+    if(challenge.email!==email) throw new Error("Email registrasi tidak cocok.");
+    const {sheet,table}=registrationSheetTable_(), m=table.map;
+    const existing=table.rows.find(r=>String(r[m.EMAIL]||"").trim().toLowerCase()===email);
+    if(existing) throw new Error("Email sudah terdaftar. Silakan login atau hubungi admin.");
+    const duplicate=table.rows.some(r=>
+      String(r[m.FULL_NAME]||"").trim().toLowerCase()===fullName.toLowerCase() &&
+      String(r[m.DIVISION]||"").trim().toUpperCase()===requestedDivision);
+    let pepper=PropertiesService.getScriptProperties().getProperty("PASSWORD_PEPPER");
+    if(!pepper) {
+      pepper=Utilities.getUuid().replace(/-/g,"")+Utilities.getUuid().replace(/-/g,"")+
+        Utilities.getUuid().replace(/-/g,"")+Utilities.getUuid().replace(/-/g,"");
+      PropertiesService.getScriptProperties().setProperty("PASSWORD_PEPPER",pepper);
+    }
+    const userId="SA-"+Utilities.getUuid().replace(/-/g,"").slice(0,12).toUpperCase();
+    const row=new Array(sheet.getLastColumn()).fill("");
+    const set=(k,v)=>{if(m[k]!==undefined)row[m[k]]=v;};
+    set("USER_ID",userId); set("FULL_NAME",fullName); set("EMAIL",email);
+    // Submitted role/division are proposals only. ACTIVE=false is mandatory.
+    set("ROLE",requestedRole); set("DIVISION",requestedDivision); set("ACTIVE",false);
+    set("PASSWORD_SALT",challenge.salt); set("PASSWORD_HASH",passwordVerifier_(derivedKey));
+    set("CREATED_AT",new Date()); set("LAST_LOGIN_AT","");
+    const rowNumber=Math.max(sheet.getLastRow()+1,table.headerRow+1);
+    sheet.getRange(rowNumber,1,1,row.length).setValues([row]);
+    cache.remove(key); cache.remove("SA_USERS_TABLE_V1");
+    const systemUser={userId:"SYSTEM",fullName:"Registration Service",role:"SYSTEM",division:""};
+    audit_("USER_REGISTER",systemUser,"REGISTRATION",userId,"",duplicate?"PENDING_REVIEW":"PENDING",{
+      sheetName:SA.USERS_SHEET,rowNumber:rowNumber,fieldKey:"REGISTRATION",
+      source:"WEB_APP",requestId:Utilities.getUuid()
+    });
+    return {registered:true,userId:userId,status:"PENDING",duplicateReview:duplicate,
+      message:duplicate?"Pendaftaran diterima untuk pemeriksaan nama dan divisi. Tunggu admin.":"Pendaftaran diterima. Tunggu aktivasi admin."};
+  } finally {lock.releaseLock();}
+}
+function registrationStatus_(payload) {
+  const email=String(payload.email||"").trim().toLowerCase();
+  if(!email) throw new Error("Email wajib diisi.");
+  const t=readUsersTableCached_(), m=t.map;
+  const row=t.rows.find(r=>String(r[m.EMAIL]||"").trim().toLowerCase()===email);
+  if(!row) return {found:false,status:"NOT_FOUND"};
+  return {found:true,userId:String(row[m.USER_ID]||""),active:isActive_(row[m.ACTIVE]),
+    status:isActive_(row[m.ACTIVE])?"ACTIVE":"PENDING_OR_INACTIVE"};
+}
+
+/* Installable/simple onEdit handler: sync only when an existing USERS row is
+   switched to TRUE. Spreadsheet edits cannot reliably identify the editor in
+   every Workspace configuration, so audit actor is explicitly SYSTEM. */
+function onEdit(e) {
+  try {
+    if(!e||!e.range) return;
+    const sh=e.range.getSheet();
+    if(sh.getName()!==SA.USERS_SHEET||e.range.getNumRows()!==1||e.range.getNumColumns()!==1) return;
+    const table=readUsersTable_(sh), activeCol=table.map.ACTIVE+1;
+    if(e.range.getColumn()!==activeCol||e.range.getRow()<=table.headerRow) return;
+    CacheService.getScriptCache().remove("SA_USERS_TABLE_V1");
+    const nowActive=isActive_(e.range.getValue());
+    const rowValues=sh.getRange(e.range.getRow(),1,1,sh.getLastColumn()).getValues()[0];
+    const user={userId:"SYSTEM",fullName:"Spreadsheet Admin",role:"SYSTEM",division:""};
+    if(nowActive) {
+      syncEmployeeMasterFromUserRow_(rowValues,table.map);
+      audit_("USER_ACTIVATED",user,"ACTIVE",String(rowValues[table.map.USER_ID]||""),String(e.oldValue||"FALSE"),"TRUE",{
+        sheetName:SA.USERS_SHEET,rowNumber:e.range.getRow(),fieldKey:"ACTIVE",source:"SHEET_EDIT"
+      });
+    } else {
+      removeOrDeactivateEmployeeMaster_(String(rowValues[table.map.USER_ID]||""));
+      audit_("USER_DEACTIVATED",user,"ACTIVE",String(rowValues[table.map.USER_ID]||""),String(e.oldValue||"TRUE"),"FALSE",{
+        sheetName:SA.USERS_SHEET,rowNumber:e.range.getRow(),fieldKey:"ACTIVE",source:"SHEET_EDIT"
+      });
+    }
+  } catch(err) { console.error("SalesApp onEdit sync: "+err.message); }
+}
+function syncEmployeeMasterFromUserRow_(row,m) {
+  const sh=getSheet_("EMPLOYEE_MASTER"), t=readTable_(sh,1), em=t.map;
+  ["USER_ID","EMPLOYEE_NAME","EMAIL","DIVISION","ROLE","ACTIVE"].forEach(k=>{
+    if(em[k]===undefined) throw new Error("Header EMPLOYEE_MASTER tidak ditemukan: "+k);
+  });
+  const id=String(row[m.USER_ID]||"");
+  if(!id) return;
+  const values=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,sh.getLastColumn()).getValues():[];
+  const index=values.findIndex(r=>String(r[em.USER_ID]||"")===id);
+  const target=index<0?new Array(sh.getLastColumn()).fill(""):values[index].slice();
+  target[em.USER_ID]=id; target[em.EMPLOYEE_NAME]=row[m.FULL_NAME]; target[em.EMAIL]=row[m.EMAIL];
+  target[em.DIVISION]=row[m.DIVISION]; target[em.ROLE]=row[m.ROLE]; target[em.ACTIVE]=true;
+  const rowNo=index<0?Math.max(2,sh.getLastRow()+1):index+2;
+  sh.getRange(rowNo,1,1,target.length).setValues([target]);
+}
+function removeOrDeactivateEmployeeMaster_(userId) {
+  const sh=getSheet_("EMPLOYEE_MASTER"), t=readTable_(sh,1), c=t.map;
+  if(c.USER_ID===undefined||c.ACTIVE===undefined) return;
+  if(sh.getLastRow()<2) return;
+  const values=sh.getRange(2,1,sh.getLastRow()-1,sh.getLastColumn()).getValues();
+  const i=values.findIndex(r=>String(r[c.USER_ID]||"")===userId);
+  if(i>=0) sh.getRange(i+2,c.ACTIVE+1).setValue(false);
+}
+
+function employeeSheets_() {
+  return {
+    activity:{name:"EMPLOYEE_ACTIVITY",headers:["ACTIVITY_ID","ACTIVITY_DATE","USER_ID","EMPLOYEE_NAME","DIVISION","ACTIVITY_TYPE","INQUIRY_PROJECT_NO","PROJECT_NAME","ACTIVITY_DESCRIPTION","START_TIME","END_TIME","ACTIVITY_STATUS","COMPLETION_NOTE","CREATED_AT","UPDATED_AT"]},
+    assignments:{name:"EMPLOYEE_ASSIGNMENTS",headers:["ASSIGNMENT_ID","USER_ID","EMPLOYEE_NAME","DIVISION","INQUIRY_PROJECT_NO","PROJECT_NAME","ASSIGNED_BY_USER_ID","ASSIGNED_BY_NAME","ASSIGNED_AT","START_DATE","TARGET_END_DATE","ACTUAL_END_DATE","ASSIGNMENT_STATUS","IS_ACTIVE","COMPLETION_NOTE","UPDATED_AT"]},
+    attendance:{name:"EMPLOYEE_ATTENDANCE",headers:["ATTENDANCE_ID","ATTENDANCE_DATE","USER_ID","EMPLOYEE_NAME","DIVISION","PRESENCE_STATUS","NOTE","UPDATED_AT"]},
+    visits:{name:"EMPLOYEE_VISITS",headers:["VISIT_ID","VISIT_DATE","USER_ID","EMPLOYEE_NAME","DIVISION","CUSTOMER","VISIT_PURPOSE","DEPARTURE_TIME","RETURN_TIME","VEHICLE_PLATE_NUMBER","VEHICLE_NOTE","VISIT_RESULT","CREATED_AT","UPDATED_AT"]},
+    master:{name:"EMPLOYEE_MASTER",headers:["USER_ID","EMPLOYEE_NAME","EMAIL","DIVISION","ROLE","ACTIVE","DEFAULT_VEHICLE_PLATE","JOIN_DATE","NOTES"]}
+  };
+}
+function employeeTable_(key) {
+  const spec=employeeSheets_()[key], sh=getSheet_(spec.name), t=readTable_(sh,1);
+  spec.headers.forEach(k=>{if(t.map[k]===undefined)throw new Error("Kolom "+k+" tidak ditemukan di "+spec.name);});
+  return {sheet:sh,map:t.map,rows:t.rows,headers:spec.headers};
+}
+function employeeDirectory_() {
+  const t=employeeTable_("master");
+  return t.rows.filter(r=>isActive_(r[t.map.ACTIVE])).map(r=>({
+    userId:String(r[t.map.USER_ID]||""),name:String(r[t.map.EMPLOYEE_NAME]||""),
+    email:String(r[t.map.EMAIL]||""),division:String(r[t.map.DIVISION]||""),
+    role:String(r[t.map.ROLE]||""),defaultPlate:String(r[t.map.DEFAULT_VEHICLE_PLATE]||"")
+  }));
+}
+function employeeDashboard_(payload) {
+  const user=requireSession_(payload.sessionToken), dir=employeeDirectory_(), isAdmin=String(user.role).toUpperCase()==="ADMIN";
+  const team=dir.filter(e=>isAdmin||e.division.toUpperCase()===String(user.division).toUpperCase());
+  const ownActivity=employeeTable_("activity"), ownAttendance=employeeTable_("attendance");
+  const activities=ownActivity.rows.filter(r=>String(r[ownActivity.map.USER_ID])===user.userId).slice(-50).reverse().map(r=>employeeRowObject_(r,ownActivity.map));
+  const attendance=ownAttendance.rows.filter(r=>String(r[ownAttendance.map.USER_ID])===user.userId).slice(-30).reverse().map(r=>employeeRowObject_(r,ownAttendance.map));
+  const canAssign=isAdmin||/DIVISION_HEAD|HEAD_OF_DIVISION|KEPALA_DIVISI/.test(String(user.role).toUpperCase());
+  return {directory:team,activities:activities,attendance:attendance,canAssign:canAssign,
+    vehiclePlates:Array.from(new Set(dir.map(e=>e.defaultPlate).filter(Boolean)))};
+}
+function employeeRowObject_(r,m) {
+  const o={};Object.keys(m).forEach(k=>{const v=r[m[k]];o[k]=v instanceof Date?Utilities.formatDate(v,Session.getScriptTimeZone(),"yyyy-MM-dd"):v;});return o;
+}
+function employeeSaveActivity_(payload) {
+  const user=requireSession_(payload.sessionToken), t=employeeTable_("activity"), data=payload.data||{}, id=String(data.ACTIVITY_ID||"");
+  const lock=LockService.getScriptLock();lock.waitLock(10000);
+  try {
+    let rowNo=-1,old=null;
+    if(id){const i=t.rows.findIndex(r=>String(r[t.map.ACTIVITY_ID])===id);if(i<0)throw new Error("Aktivitas tidak ditemukan.");old=t.rows[i];if(String(old[t.map.USER_ID])!==user.userId)throw new Error("Anda hanya dapat mengubah aktivitas milik sendiri.");rowNo=i+2;}
+    const now=new Date(), activityDate=String(data.ACTIVITY_DATE||"").trim(), type=String(data.ACTIVITY_TYPE||"").trim();
+    if(!activityDate||!type)throw new Error("Tanggal dan jenis aktivitas wajib diisi.");
+    const allowed=["WORK","MEETING","FIELD_WORK","FOLLOW_UP","OTHER"];
+    if(!allowed.includes(type.toUpperCase()))throw new Error("Jenis aktivitas tidak valid.");
+    const values=old?old.slice():new Array(t.sheet.getLastColumn()).fill("");
+    const set=(k,v)=>{values[t.map[k]]=v;};
+    set("ACTIVITY_ID",id||Utilities.getUuid());set("ACTIVITY_DATE",new Date(activityDate+"T12:00:00"));
+    set("USER_ID",user.userId);set("EMPLOYEE_NAME",user.fullName);set("DIVISION",user.division);
+    ["ACTIVITY_TYPE","INQUIRY_PROJECT_NO","PROJECT_NAME","ACTIVITY_DESCRIPTION","START_TIME","END_TIME","ACTIVITY_STATUS","COMPLETION_NOTE"].forEach(k=>{if(t.map[k]!==undefined)set(k,String(data[k]||""));});
+    if(!old)set("CREATED_AT",now);set("UPDATED_AT",now);
+    if(old) employeeAuditChanges_(user,t.name,rowNo,old,values,t.map);
+    if(old)t.sheet.getRange(rowNo,1,1,values.length).setValues([values]);
+    else {rowNo=t.sheet.getLastRow()+1;t.sheet.getRange(rowNo,1,1,values.length).setValues([values]);audit_("EMPLOYEE_ACTIVITY_CREATE",user,"RECORD",id,"","Created",{sheetName:t.name,rowNumber:rowNo,fieldKey:"RECORD"});}
+    return {saved:true,id:id||values[t.map.ACTIVITY_ID]};
+  } finally {lock.releaseLock();}
+}
+function employeeAuditChanges_(user,sheetName,rowNo,oldRow,newRow,map) {
+  Object.keys(map).forEach(k=>{const a=oldRow[map[k]],b=newRow[map[k]];const av=a instanceof Date?a.toISOString():String(a==null?"":a),bv=b instanceof Date?b.toISOString():String(b==null?"":b);if(av!==bv)audit_("EMPLOYEE_RECORD_UPDATE",user,k,String(newRow[map.ACTIVITY_ID]||newRow[map.VISIT_ID]||""),av,bv,{sheetName:sheetName,rowNumber:rowNo,fieldKey:k});});
+}
+function employeeSaveAttendance_(payload) {
+  const user=requireSession_(payload.sessionToken),t=employeeTable_("attendance"),d=payload.data||{};
+  const date=String(d.ATTENDANCE_DATE||"").trim(),status=String(d.PRESENCE_STATUS||"").toUpperCase();
+  if(!date||!["OFFICE","EXTERNAL_VISIT","LEAVE","SICK","OFF"].includes(status))throw new Error("Tanggal atau status kehadiran tidak valid.");
+  const lock=LockService.getScriptLock();lock.waitLock(10000);
+  try{
+    const i=t.rows.findIndex(r=>String(r[t.map.USER_ID])===user.userId&&String(r[t.map.ATTENDANCE_DATE])===date);
+    const values=i>=0?t.rows[i].slice():new Array(t.sheet.getLastColumn()).fill("");
+    const set=(k,v)=>values[t.map[k]]=v;
+    set("ATTENDANCE_ID",i>=0?values[t.map.ATTENDANCE_ID]:Utilities.getUuid());set("ATTENDANCE_DATE",new Date(date+"T12:00:00"));
+    set("USER_ID",user.userId);set("EMPLOYEE_NAME",user.fullName);set("DIVISION",user.division);set("PRESENCE_STATUS",status);set("NOTE",String(d.NOTE||""));set("UPDATED_AT",new Date());
+    const rowNo=i>=0?i+2:t.sheet.getLastRow()+1;t.sheet.getRange(rowNo,1,1,values.length).setValues([values]);
+    if(i>=0)employeeAuditChanges_(user,t.name,rowNo,t.rows[i],values,t.map);else audit_("EMPLOYEE_ATTENDANCE_CREATE",user,"RECORD",values[t.map.ATTENDANCE_ID],"","Created",{sheetName:t.name,rowNumber:rowNo,fieldKey:"RECORD"});
+    return {saved:true};
+  }finally{lock.releaseLock();}
+}
+function employeeSaveVisit_(payload) {
+  const user=requireSession_(payload.sessionToken),t=employeeTable_("visits"),d=payload.data||{};
+  const date=String(d.VISIT_DATE||"").trim();if(!date||!String(d.CUSTOMER||"").trim())throw new Error("Tanggal dan customer wajib diisi.");
+  const values=new Array(t.sheet.getLastColumn()).fill(""),id=Utilities.getUuid(),now=new Date();
+  const set=(k,v)=>values[t.map[k]]=v;
+  set("VISIT_ID",id);set("VISIT_DATE",new Date(date+"T12:00:00"));set("USER_ID",user.userId);set("EMPLOYEE_NAME",user.fullName);set("DIVISION",user.division);
+  ["CUSTOMER","VISIT_PURPOSE","DEPARTURE_TIME","RETURN_TIME","VEHICLE_PLATE_NUMBER","VEHICLE_NOTE","VISIT_RESULT"].forEach(k=>set(k,String(d[k]||"")));
+  set("CREATED_AT",now);set("UPDATED_AT",now);
+  const rowNo=t.sheet.getLastRow()+1;t.sheet.getRange(rowNo,1,1,values.length).setValues([values]);
+  audit_("EMPLOYEE_VISIT_CREATE",user,"RECORD",id,"","Created",{sheetName:t.name,rowNumber:rowNo,fieldKey:"RECORD"});
+  return {saved:true,id:id};
+}
+function employeeAssign_(payload) {
+  const user=requireSession_(payload.sessionToken),admin=String(user.role).toUpperCase()==="ADMIN";
+  const head=/DIVISION_HEAD|HEAD_OF_DIVISION|KEPALA_DIVISI/.test(String(user.role).toUpperCase());
+  if(!admin&&!head)throw new Error("Hanya Admin atau Kepala Divisi yang dapat memberikan penugasan.");
+  const d=payload.data||{},targetId=String(d.USER_ID||"");
+  const target=employeeDirectory_().find(e=>e.userId===targetId);
+  if(!target)throw new Error("Karyawan aktif tidak ditemukan.");
+  if(!admin&&target.division.toUpperCase()!==String(user.division).toUpperCase())throw new Error("Kepala divisi hanya dapat menugaskan karyawan dari divisinya sendiri.");
+  const t=employeeTable_("assignments"),values=new Array(t.sheet.getLastColumn()).fill(""),id=Utilities.getUuid(),now=new Date();
+  const set=(k,v)=>values[t.map[k]]=v;
+  set("ASSIGNMENT_ID",id);set("USER_ID",target.userId);set("EMPLOYEE_NAME",target.name);set("DIVISION",target.division);
+  ["INQUIRY_PROJECT_NO","PROJECT_NAME","START_DATE","TARGET_END_DATE","COMPLETION_NOTE"].forEach(k=>set(k,String(d[k]||"")));
+  set("ASSIGNED_BY_USER_ID",user.userId);set("ASSIGNED_BY_NAME",user.fullName);set("ASSIGNED_AT",now);set("ASSIGNMENT_STATUS","ASSIGNED");set("IS_ACTIVE",true);set("UPDATED_AT",now);
+  const rowNo=t.sheet.getLastRow()+1;t.sheet.getRange(rowNo,1,1,values.length).setValues([values]);
+  audit_("EMPLOYEE_ASSIGN",user,"RECORD",id,"","Assigned to "+target.name,{sheetName:t.name,rowNumber:rowNo,fieldKey:"RECORD"});
+  return {assigned:true,id:id};
+}
+function employeeUpdateAssignment_(payload) {
+  const user=requireSession_(payload.sessionToken),t=employeeTable_("assignments"),id=String(payload.assignmentId||""),status=String(payload.status||"").toUpperCase();
+  if(!["ASSIGNED","IN_PROGRESS","ON_HOLD","COMPLETED","CANCELLED"].includes(status))throw new Error("Status penugasan tidak valid.");
+  const i=t.rows.findIndex(r=>String(r[t.map.ASSIGNMENT_ID])===id);if(i<0)throw new Error("Penugasan tidak ditemukan.");
+  const old=t.rows[i],isOwner=String(old[t.map.USER_ID])===user.userId;
+  const isAdmin=String(user.role).toUpperCase()==="ADMIN",isHead=/DIVISION_HEAD|HEAD_OF_DIVISION|KEPALA_DIVISI/.test(String(user.role).toUpperCase());
+  if(!isOwner&&!isAdmin&&!(isHead&&String(old[t.map.DIVISION]).toUpperCase()===String(user.division).toUpperCase()))throw new Error("Tidak memiliki izin mengubah penugasan ini.");
+  const values=old.slice();values[t.map.ASSIGNMENT_STATUS]=status;values[t.map.COMPLETION_NOTE]=String(payload.note||"");values[t.map.IS_ACTIVE]=!["COMPLETED","CANCELLED"].includes(status);values[t.map.UPDATED_AT]=new Date();
+  if(status==="COMPLETED")values[t.map.ACTUAL_END_DATE]=new Date();
+  const rowNo=i+2;t.sheet.getRange(rowNo,1,1,values.length).setValues([values]);
+  employeeAuditChanges_(user,t.name,rowNo,old,values,t.map);return {updated:true};
+}
+function employeeHistory_(payload) {
+  const user=requireSession_(payload.sessionToken),isAdmin=String(user.role).toUpperCase()==="ADMIN";
+  const targetId=String(payload.userId||user.userId);
+  if(targetId!==user.userId&&!isAdmin)throw new Error("Riwayat hanya dapat dilihat oleh pemilik atau Admin.");
+  const sh=getSheet_(SA.LOG_SHEET),h=activityLogHeader_(sh),m=h.map,last=sh.getLastRow();
+  if(last<=h.row)return {items:[]};
+  const rows=sh.getRange(h.row+1,1,last-h.row,sh.getLastColumn()).getValues();
+  const items=rows.filter(r=>String(r[m.USER_ID]||"")===targetId&&/^EMPLOYEE_/.test(String(r[m.ACTION]||""))).map(r=>employeeRowObject_(r,m)).reverse().slice(0,150);
+  return {items:items};
+}
+function employeeVehicleSuggestions_(payload) {
+  const user=requireSession_(payload.sessionToken),dir=employeeDirectory_();
+  const plates=Array.from(new Set(dir.map(e=>e.defaultPlate).filter(Boolean)));
+  return {plates:plates};
 }
