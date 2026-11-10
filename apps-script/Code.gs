@@ -932,6 +932,7 @@ function registerComplete_(payload) {
   if(fullName.length<3||fullName.length>120) throw new Error("Nama harus 3–120 karakter.");
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Format email tidak valid.");
   if(!requestedRole||!requestedDivision) throw new Error("Role dan divisi wajib dipilih.");
+  if(["ADMIN","DIVISION_HEAD","HEAD_OF_DIVISION","KEPALA_DIVISI","OWNER"].includes(requestedRole)) throw new Error("Role istimewa hanya dapat diberikan langsung oleh admin setelah pendaftaran.");
   const lock=LockService.getScriptLock(); lock.waitLock(15000);
   try {
     const cache=CacheService.getScriptCache(), key="SA_REGISTER_"+challengeId, raw=cache.get(key);
@@ -1046,6 +1047,9 @@ function employeeTable_(key) {
   return {sheet:sh,map:t.map,rows:t.rows,headers:spec.headers};
 }
 function employeeDirectory_() {
+  // Reconcile active USERS into EMPLOYEE_MASTER, keyed strictly by USER_ID.
+  const users=readUsersTableCached_(), um=users.map;
+  users.rows.forEach(r=>{if(isActive_(r[um.ACTIVE])) syncEmployeeMasterFromUserRow_(r,um);});
   const t=employeeTable_("master");
   return t.rows.filter(r=>isActive_(r[t.map.ACTIVE])).map(r=>({
     userId:String(r[t.map.USER_ID]||""),name:String(r[t.map.EMPLOYEE_NAME]||""),
