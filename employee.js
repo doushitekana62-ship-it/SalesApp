@@ -46,7 +46,7 @@
     $("employeeManagementView").hidden=!enabled;$("backDashboardBtn").hidden=!enabled;$("employeeViewBtn").hidden=enabled;
     ["analyticsSection","deadlineSection"].forEach(id=>{if($(id))$(id).hidden=enabled;});
     document.querySelector(".kpi-grid").hidden=enabled;
-    document.querySelector(".data-panel").hidden=enabled;
+    $("inquiryRegisterPanel").hidden=enabled;
     $("createInquiryBtn").hidden=enabled||$("createInquiryBtn").dataset.allowed!=="true";
     document.querySelector(".page-heading h1").textContent=enabled?"Employee Management":"Inquiry monitoring";
     document.querySelector(".page-heading .eyebrow").textContent=enabled?"EMPLOYEE":"OVERVIEW";
